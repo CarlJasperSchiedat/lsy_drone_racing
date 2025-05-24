@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 def export_quadrotor_ode_model() -> AcadosModel:
     """Symbolic Quadrotor Model."""
+    
     # Define name of solver to be used in script
     model_name = "lsy_example_mpc"
 
