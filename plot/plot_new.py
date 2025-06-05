@@ -159,7 +159,7 @@ extended_gates_quat = [[0, 0, 0, 0]] + gates_quat # der erste Eintrag wird nicht
 # gates = [start_pos, gates_positions[0], gates_positions[1]]
 
 
-X_opt, N_opt = optimize_full_trajectory(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, t_min=6, t_max=8, step=0.2, random_iteraitions=5)
+X_opt, N_opt = optimize_full_trajectory(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, t_min=10, t_max=20, step=1, random_iteraitions=5)
 
 # N_list = [72, 99, 73, 106]
 # X_opt, N_opt = optimize_waypoint_positions(extended_gates, extended_gates_quat, N_list, obstacles_positions, start_vel, velocity_gate4, dt=1/50)
@@ -177,7 +177,7 @@ output_data = {
     "X_opt": np.array(X_opt).tolist()
 }
 output_dir = os.path.join("plot", "traj_data")
-output_path = os.path.join(output_dir, "opt_traj_ohneVel_anZwischengate_changedbounds_1.json")
+output_path = os.path.join(output_dir, "opt_traj_0406_newbounds_1.json")
 with open(output_path, "w") as f:
     json.dump(output_data, f, indent=2)
 print(f"✅ Optimierungsdaten gespeichert in: {output_path}")

@@ -5,12 +5,14 @@ import numpy as np
 distances = np.linspace(0, 0.15, 50)
 
 
-# Variante 1: exp(-50 * dist)
+# Variante 1: linear
+multiply_1 = 10
 falloff_1 = 1
 faktor_1 = 100
-penalty_lin = np.exp(-faktor_1 * distances / falloff_1)
+penalty_lin = multiply_1 * np.exp(-faktor_1 * distances / falloff_1)
 
-# Variante 2: Glockenform um 0.275 mit falloff 0.05
+# Variante 2: quadratisch
+multiply_2 = 1.0
 falloff_2 = 0.5
 faktor_2 = 100
 '''
@@ -20,12 +22,15 @@ penalty_bell = np.where(
     0.0
 )
 '''
-penalty_quad = np.exp(-((distances / falloff_2) ** 2) * faktor_2)
+penalty_quad = multiply_2 * np.exp(-((distances / falloff_2) ** 2) * faktor_2)
 
-# Variante 3: exp(-100 * dist)
-falloff_3 = 0.25
+# Variante 3: ^4
+multiply_3 = 5.0
+falloff_3 = 0.4
 faktor_3 = 200
-penalty_3 = np.exp(-((distances / falloff_3) ** 4) * faktor_3)
+penalty_3 = multiply_3 * np.exp(-((distances / falloff_3) ** 4) * faktor_3)
+
+
 
 # Plot
 plt.figure(figsize=(10, 6))

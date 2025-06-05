@@ -12,6 +12,12 @@ This module contains the helping functions for my_mpc_controller.py .
 import numpy as np
 import scipy
 import os
+# Workaround für acados auf Windows – sorgt dafür, dass Kompilierung klappt
+os.environ["CC"] = "gcc"
+os.environ["LD"] = "gcc"
+os.environ["RM"] = "del"
+
+
 
 # from scipy.interpolate import CubicSpline
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
@@ -466,10 +472,22 @@ def create_ocp_solver(
 
 
 
+    # Alte JSON löschen
     if os.path.exists("my_mpc_controller.json"):
         os.remove("my_mpc_controller.json")
-        print("🗑️ Alte my_mpc_controller.json gelöscht und neu erzeugt.")
-    assert not os.path.exists("my_mpc_controller.json")
+
+    # Alte DLL löschen
+    dll_path = "c_generated_code/acados_ocp_solver_my_mpc_controller.dll"
+    if os.path.exists(dll_path):
+        os.remove(dll_path)
+
+    # Workaround: Rename DLL if needed (Windows: gcc prepends "lib")
+    dll_expected = "c_generated_code/acados_ocp_solver_my_mpc_controller.dll"
+    dll_actual = "c_generated_code/libacados_ocp_solver_my_mpc_controller.dll"
+
+    if os.path.exists(dll_actual) and not os.path.exists(dll_expected):
+        os.rename(dll_actual, dll_expected)
+        print(f"🛠️ DLL umbenannt: {dll_actual} ➝ {dll_expected}")
 
 
 

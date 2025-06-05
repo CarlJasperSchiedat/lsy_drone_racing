@@ -190,13 +190,17 @@ def optimize_waypoint_positions(gates, gates_quat, N_list, obstacles, v_start, v
     # # collective force bounds -> 9
     # collective_force_lower_bound = [0]  # alte Werte
     # collective_force_upper_bound = [1.0]
-    collective_force_lower_bound = [0.1]  # Werte aus gegebenem MPC
-    collective_force_upper_bound = [0.55]
+    # collective_force_lower_bound = [0.1]  # Werte aus gegebenem MPC
+    # collective_force_upper_bound = [0.55]
+    collective_force_lower_bound = [0.1]  # eigene Werte
+    collective_force_upper_bound = [0.8]
     # # command bounds -> 10 - 13
     # command_lower_bound = [-1.0, -np.pi/2, -np.pi/2, -2*np.pi] # alte Werte
     # command_upper_bound = [ 1.0,  np.pi/2,  np.pi/2,  2*np.pi]
-    command_lower_bound = [ 0.10, -np.pi/2, -np.pi/2, -2*np.pi] # alte Werte
-    command_upper_bound = [ 0.55,  np.pi/2,  np.pi/2,  2*np.pi]
+    # command_lower_bound = [ 0.10, -np.pi/2, -np.pi/2, -2*np.pi] # Werte aus gegebenem MPC
+    # command_upper_bound = [ 0.55,  np.pi/2,  np.pi/2,  2*np.pi]
+    command_lower_bound = [ 0.10, -np.pi/2, -np.pi/2, -2*np.pi] # eigene Werte
+    command_upper_bound = [ 0.80,  np.pi/2,  np.pi/2,  2*np.pi]
 
 
     idx = 0
@@ -224,22 +228,23 @@ def optimize_waypoint_positions(gates, gates_quat, N_list, obstacles, v_start, v
 
 
             # --------------------------------Cost------------------------------------
-            cost += 1e-1 * sumsqr(ui) # Control effort minimization # 1e-0
-            cost += 1e-1 * sumsqr(xi_next[:3] - xi[:3]) # Position change minimization # 1e-0
+            cost += 1e-0 * sumsqr(ui) # Control effort minimization # 1e-0
+            cost += 1e-0 * sumsqr(xi_next[:3] - xi[:3]) # Position change minimization # 1e-0
 
             # Obstacle penalty
             if obstacles: 
                 for idx_obs, obs in enumerate(obstacles):
                     dist = sumsqr(xi[0:2] - obs[0:2])
-                    # cost += exp(-100 * dist)
+                    cost += 5 * exp(-100 * dist)
 
-
+                    '''
                     if idx_obs == 3:
                         # Härtere Bestrafung für Obstacle 4
                         cost += 1.0 * exp(-100 * dist)
                     else:
                         # Standardbestrafung für alle anderen
                         cost += 1.0 * exp(-100 * dist)
+                    '''
 
             # Gate-Boundries penatly: current and previous gate
             for gate_offset in [0, -1]:
@@ -266,7 +271,7 @@ def optimize_waypoint_positions(gates, gates_quat, N_list, obstacles, v_start, v
                     # if abs(rel_pos[2]) < y_range: # Wenn innerhalb des Toleranzbereichs in y-Richtung
                     #     cost += exp(-((penalty_dist / falloff) ** 4) * 200)
                     if_condition = fabs(rel_pos[1]) < y_range
-                    cost += if_condition * (1.0 * exp(-((penalty_dist / falloff)**4) * faktor))
+                    cost += if_condition * (2.0 * exp(-((penalty_dist / falloff)**4) * faktor))
 
 
 
@@ -290,13 +295,14 @@ def optimize_waypoint_positions(gates, gates_quat, N_list, obstacles, v_start, v
             lbg += [-0.15, -0.15, 0.0]
             ubg += [ 0.15,  0.15, 0.0]
 
-            ''' # Velocity ignorieren ? 
+            # '''
+            # Velocity ignorieren ? 
             v_drone = X[idx][3:6]
             gate_dir = DM(R.from_quat(gates_quat[gate_idx]).apply([0, 1, 0]))
             g += [dot(v_drone, gate_dir)]
             lbg += [0.5]
             ubg += [inf]
-            '''
+            # '''
 
 
             # ----------------------------------Cost--------------------------------------
@@ -343,13 +349,15 @@ def optimize_waypoint_positions(gates, gates_quat, N_list, obstacles, v_start, v
     lbg += [-0.15, -0.15, 0.0]
     ubg += [ 0.15,  0.15, 0.0]
 
-    '''
+
+    # '''
+    # Velocity ignorieren ? 
     v_drone = X[total_N][3:6]
     gate_dir = DM(R.from_quat(gates_quat[-1]).apply([0, 1, 0]))
     g += [dot(v_drone, gate_dir)]
     lbg += [0.5]
     ubg += [inf]
-    '''
+    # '''
 
     # Letztes X anhängen
     w += [X[total_N]]
@@ -361,7 +369,7 @@ def optimize_waypoint_positions(gates, gates_quat, N_list, obstacles, v_start, v
 
     # --------------------------------Cost------------------------------------
     # cost for time / points used:
-    cost += (total_N * dt) * 2
+    cost += (total_N * dt) * 0.01
     cost += 10.0 * sumsqr(rel_pos[0:3])
 
 

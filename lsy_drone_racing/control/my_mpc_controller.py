@@ -43,7 +43,7 @@ class MyMPCController(Controller):
 
 
         # initial geplante Trajektorie
-        traj_path = "plot/traj_data/opt_traj_290525.json"
+        traj_path = "plot/traj_data/opt_traj_0406_newbounds_1.json"
         with open(traj_path, "r") as f:
             traj_data = json.load(f)
         # self.trajectory = np.array(traj_data["X_opt"])[:, :3] # Trajektorie - nur Positionen
@@ -96,7 +96,10 @@ class MyMPCController(Controller):
 
 
         if update: # Falls irgendein Gate/Obstacle erkannt wurde, aber noch nicht geupdated uwrde -> Trajektorie neu planen
-
+            print("In Update der Trajektorie gegangen")
+            
+            start_time = time.time()
+            
             with self._lock: # Lade alle Werte lokal um Lesen / Schreiben in compute_control möglich ist
                 
                 # Neuplanung mit Beginn der Werte aus observation; current_traj für initialwerte der Optimierung
@@ -120,17 +123,18 @@ class MyMPCController(Controller):
                 gate_pos = self.obs["gates_pos"]
 
                 N_list = self.section_ticks
-
+            elapsed_time = time.time() - start_time
+            print(f"⏱️ self._lock time in Recompute: {elapsed_time:.6f} seconds")
                 
             # Startposition / -geschw. aus den aktuellen Beob. oder aus der Trajektorie?
             start_time = time.time()
-            traj_section, ab_tick = recompute_trajectory(current_traj, gate_pos, gate_quat, obstacles, N_list, current_tick, start_state)
+            # traj_section, ab_tick = recompute_trajectory(current_traj, gate_pos, gate_quat, obstacles, N_list, current_tick, start_state)
             elapsed_time = time.time() - start_time
             print(f"⏱️ Recompute duration: {elapsed_time:.6f} seconds")
 
 
-        with self._lock: # Speichere die Trajektorie im gemeinsamen Speicher
-            self.trajectory[ab_tick:ab_tick + len(traj_section)] = traj_section
+        # with self._lock: # Speichere die Trajektorie im gemeinsamen Speicher
+            # self.trajectory[ab_tick:ab_tick + len(traj_section)] = traj_section
 
 
 
@@ -179,15 +183,15 @@ class MyMPCController(Controller):
 
 
         # Set the desired trajectory for the MPC        # TRAJEKTORY MUSS UM N HORIZON VERLÄNGERT SEIN, DAMIT DIE MPC LÄUFT
-        for j in range(self.N):
+        for j in range(self.N_Horizon):
             if idx + j < trajectory_local.shape[0]:
-                yref = trajectory_local[idx + j]
+                yref = np.concatenate([trajectory_local[idx + j], np.zeros(self.ocp.model.u.rows())])
             else:
                 yref = trajectory_local[-1]
             self.acados_ocp_solver.set(j, "yref", yref)
 
-        yref_N = trajectory_local[idx + self.N]  # Letzter Wert der Trajektorie
-        self.acados_ocp_solver.set(self.N, "yref", yref_N)
+        yref_N = trajectory_local[idx + self.N_Horizon]  # Letzter Wert der Trajektorie
+        self.acados_ocp_solver.set(self.N_Horizon, "yref", yref_N)
         
 
         self.acados_ocp_solver.solve()
