@@ -335,6 +335,7 @@ def optimize_waypoint_positions(gates, gates_quat, N_list, obstacles, v_start, v
     lbg += [0]*6
     ubg += [0]*6
 
+
     # Ziel-Gate: Position (fix) als UGB + Velocity-Richtung nicht fix
     '''
     g += [X[total_N][0:3] - DM(gates[-1][:3])]
@@ -369,7 +370,7 @@ def optimize_waypoint_positions(gates, gates_quat, N_list, obstacles, v_start, v
 
     # --------------------------------Cost------------------------------------
     # cost for time / points used:
-    cost += (total_N * dt) * 0.01
+    cost += (total_N * dt) * 0.1
     cost += 10.0 * sumsqr(rel_pos[0:3])
 
 

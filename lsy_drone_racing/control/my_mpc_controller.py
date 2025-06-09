@@ -128,13 +128,13 @@ class MyMPCController(Controller):
                 
             # Startposition / -geschw. aus den aktuellen Beob. oder aus der Trajektorie?
             start_time = time.time()
-            # traj_section, ab_tick = recompute_trajectory(current_traj, gate_pos, gate_quat, obstacles, N_list, current_tick, start_state)
+            traj_section, ab_tick = recompute_trajectory(current_traj, gate_pos, gate_quat, obstacles, N_list, current_tick, start_state)
             elapsed_time = time.time() - start_time
             print(f"⏱️ Recompute duration: {elapsed_time:.6f} seconds")
 
 
-        # with self._lock: # Speichere die Trajektorie im gemeinsamen Speicher
-            # self.trajectory[ab_tick:ab_tick + len(traj_section)] = traj_section
+        with self._lock: # Speichere die Trajektorie im gemeinsamen Speicher
+            self.trajectory[ab_tick:ab_tick + len(traj_section)] = traj_section
 
 
 
