@@ -109,8 +109,8 @@ def export_quadrotor_ode_model() -> AcadosModel:
         dy_cmd,
     )
     # Define the pole location and radius##################################
-    pole_x = 0.36415142
-    pole_y = -0.86942714
+    pole_x = 0.4857328
+    pole_y = -0.8829206
     pole_radius = 0.14
     
     # Constraint: must stay outside the pole area
@@ -310,37 +310,43 @@ class MPController(Controller):
             [-0.5, 0.0, 1.11],
         ]
         # Same waypoints as in the trajectory controller. Determined by trial and error.
-        waypoints = np.array(
+        self.waypoints = np.array(
             [
             [1.0, 1.5, 0.2],
             [0.625, 0.25, 0.38],
-            [0.45, -0.5, 0.56],
+            [0.45, -0.5, 0.56],  # gate 0 = waypoint 2
             [0.425, -0.57, 0.56],
             [0.325, -0.9, 0.605],
             [0.2, -1.3, 0.65],
             [0.6, -1.375, 0.78],
             [0.8, -1.375, 0.88],
-            [1.0, -1.05, 1.11], # [1.0, -1.05, 1.11],
+            [1.0, -1.05, 1.11], # gate 1 = waypoint 8
             [1.1, -0.8, 1.11],
             [0.7, -0.275, 0.88],
             [0.2, 0.5, 0.65],
-            [0.0, 1.0, 0.56],
+            [0.0, 1.0, 0.56], # gate 2 = waypoint 12
             [0.0, 1.05, 0.56],
             [0.0, 0.9, 0.63],
             [-0.1, 0.7, 0.75],
             [-0.25, 0.3, 0.95],
-            #[-0.5, 0.0, 1.1],
-            [-0.5, 0.0, 1.1],
+            [-0.5, 0.0, 1.1], # gate 3 = waypoint 17
             ]
         )
-        # Scale trajectory between 0 and 1
-        ts = np.linspace(0, 1, np.shape(waypoints)[0])
-        cs_x = CubicSpline(ts, waypoints[:, 0])
-        cs_y = CubicSpline(ts, waypoints[:, 1])
-        cs_z = CubicSpline(ts, waypoints[:, 2])
+        self.gate_map = { # welches gate korrespondiert mit welchem waypoint
+            0: 2,
+            1: 8,
+            2: 12,
+            3: 17
+        }
 
-        des_completion_time = 20
-        ts = np.linspace(0, 1, int(self.freq * des_completion_time))
+        # Scale trajectory between 0 and 1
+        ts = np.linspace(0, 1, np.shape(self.waypoints)[0])
+        cs_x = CubicSpline(ts, self.waypoints[:, 0])
+        cs_y = CubicSpline(ts, self.waypoints[:, 1])
+        cs_z = CubicSpline(ts, self.waypoints[:, 2])
+
+        self.des_completion_time = 20
+        ts = np.linspace(0, 1, int(self.freq * self.des_completion_time))
 
         self.x_des = cs_x(ts)
         self.y_des = cs_y(ts)
@@ -387,7 +393,10 @@ class MPController(Controller):
         if update:
             if update ==2:
                 print('Changes were detected, now we can update traj at:',self._tick)
-                print('The current waypoint ist:',(self._tick-np.mod(self._tick,self.freq))/self.freq)
+                ticks_per_segment = int(self.freq * self.des_completion_time) // (len(self.waypoints) - 1)
+                print('The current waypoint ist:',  (self._tick-np.mod(self._tick,ticks_per_segment))  / ticks_per_segment  )
+                current_waypoint_idx = int( (self._tick-np.mod(self._tick,self.freq))/self.freq )
+                self.update_traj(obs, current_waypoint_idx)
             else:
                 print('Changes were detected, obstacle:',self._tick)
                 print("update prev_obstacle welche benutzte werden für NB")
@@ -535,6 +544,47 @@ class MPController(Controller):
 
         return flag
 
-    '''
-    def update_traj(self,obs):
-    '''
+    
+    def update_traj(self, obs, waypoint_idx):
+        """
+        Set the cubic splines new from the current position
+        """
+        for i, idx in self.gate_map.items(): # update the waypoints that correspond to a specific gate
+            self.waypoints[idx] = self.prev_gates[i]
+
+
+
+        # 1. Neue Sub-Waypoints auswählen
+        segemnt_number = 4
+        wp_slice = self.waypoints[waypoint_idx:waypoint_idx + segemnt_number]
+
+        if len(wp_slice) < segemnt_number:
+            print("⚠️ Nicht genug Waypoints für ein Update")
+            return
+
+        # 2. Neuen Spline über 3 Waypoints erzeugen
+        ts_partial = np.linspace(0, 1, len(wp_slice))
+        print(len(ts_partial))
+        cs_x = CubicSpline(ts_partial, wp_slice[:, 0])
+        cs_y = CubicSpline(ts_partial, wp_slice[:, 1])
+        cs_z = CubicSpline(ts_partial, wp_slice[:, 2])
+
+        # 3. Sampling auf diesen Teil
+        ticks_per_segment = int(self.freq * self.des_completion_time) // (len(self.waypoints) - 1)
+        print(ticks_per_segment)
+        des_t = np.linspace(0, 1, ticks_per_segment * segemnt_number)
+        print(des_t)
+
+        x_new = cs_x(des_t)
+        y_new = cs_y(des_t)
+        z_new = cs_z(des_t)
+        print(len(z_new))
+
+        # 4. Neue Stück-Trajektorie ans Ende hängen (oder ersetzen)
+        self.x_des = np.concatenate((self.x_des[:self._tick], x_new, self.x_des[self._tick + len(x_new):]))
+        self.y_des = np.concatenate((self.y_des[:self._tick], y_new, self.y_des[self._tick + len(y_new):]))
+        self.z_des = np.concatenate((self.z_des[:self._tick], z_new, self.z_des[self._tick + len(z_new):]))
+        print(len(self.x_des))
+
+        print(f"✅ Trajektorie-Teil ab Index {waypoint_idx} erfolgreich ersetzt.")
+        
