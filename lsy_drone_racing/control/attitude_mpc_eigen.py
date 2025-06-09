@@ -330,6 +330,9 @@ class MPController(Controller):
             [-0.1, 0.7, 0.75],
             [-0.25, 0.3, 0.95],
             [-0.5, 0.0, 1.1], # gate 3 = waypoint 17
+            [-0.5, -1.0, 1.1],
+            [-0.5, -2.0, 1.1],
+            [-0.5, -3.0, 1.1],
             ]
         )
         self.gate_map = { # welches gate korrespondiert mit welchem waypoint
@@ -345,7 +348,7 @@ class MPController(Controller):
         cs_y = CubicSpline(ts, self.waypoints[:, 1])
         cs_z = CubicSpline(ts, self.waypoints[:, 2])
 
-        self.des_completion_time = 20
+        self.des_completion_time = 25
         ts = np.linspace(0, 1, int(self.freq * self.des_completion_time))
 
         self.x_des = cs_x(ts)
@@ -394,8 +397,10 @@ class MPController(Controller):
             if update ==2:
                 print('Changes were detected, now we can update traj at:',self._tick)
                 ticks_per_segment = int(self.freq * self.des_completion_time) // (len(self.waypoints) - 1)
-                print('The current waypoint ist:',  (self._tick-np.mod(self._tick,ticks_per_segment))  / ticks_per_segment  )
-                current_waypoint_idx = int( (self._tick-np.mod(self._tick,self.freq))/self.freq )
+                current_waypoint_idx = int( (self._tick-np.mod(self._tick,ticks_per_segment))  / ticks_per_segment )
+                print('The current waypoint ist:', (self._tick-np.mod(self._tick,ticks_per_segment))  / ticks_per_segment  )
+                print("ticks per segment:", ticks_per_segment)
+
                 self.update_traj(obs, current_waypoint_idx)
             else:
                 print('Changes were detected, obstacle:',self._tick)
@@ -497,6 +502,8 @@ class MPController(Controller):
 
         return cmd
 
+
+
     def step_callback(
         self,
         action: NDArray[np.floating],
@@ -517,7 +524,6 @@ class MPController(Controller):
 
 
 
-
     def check_for_update(self,obs):
         """
         return: flag:
@@ -527,18 +533,18 @@ class MPController(Controller):
         """
         flag=0
         if not np.array_equal(self.prev_obstacle,obs["obstacles_pos"]):
-            print('Obstacle has changed:')  
-            print(obs["obstacles_pos"])
+            # print('Obstacle has changed:')  
+            # print(obs["obstacles_pos"])
             self.prev_obstacle=obs["obstacles_pos"]
             flag=1
         if not np.array_equal(self.prev_gates_quat,obs["gates_quat"]):
-            print('Gate_rotation has changed:')
-            print(obs['gates_quat'])
+            # print('Gate_rotation has changed:')
+            # print(obs['gates_quat'])
             self.prev_gates_quat=obs["gates_quat"]
             flag=2
         if not np.array_equal(self.prev_gates,obs["gates_pos"]):
-            print('Gate_position has changed:')
-            print(obs['gates_pos'])
+            # print('Gate_position has changed:')
+            # print(obs['gates_pos'])
             self.prev_gates=obs["gates_pos"]
             flag=2
 
@@ -555,8 +561,9 @@ class MPController(Controller):
 
 
         # 1. Neue Sub-Waypoints auswählen
-        segemnt_number = 4
+        segemnt_number = 6
         wp_slice = self.waypoints[waypoint_idx:waypoint_idx + segemnt_number]
+        print(wp_slice)
 
         if len(wp_slice) < segemnt_number:
             print("⚠️ Nicht genug Waypoints für ein Update")
@@ -564,27 +571,26 @@ class MPController(Controller):
 
         # 2. Neuen Spline über 3 Waypoints erzeugen
         ts_partial = np.linspace(0, 1, len(wp_slice))
-        print(len(ts_partial))
         cs_x = CubicSpline(ts_partial, wp_slice[:, 0])
         cs_y = CubicSpline(ts_partial, wp_slice[:, 1])
         cs_z = CubicSpline(ts_partial, wp_slice[:, 2])
 
         # 3. Sampling auf diesen Teil
         ticks_per_segment = int(self.freq * self.des_completion_time) // (len(self.waypoints) - 1)
-        print(ticks_per_segment)
         des_t = np.linspace(0, 1, ticks_per_segment * segemnt_number)
-        print(des_t)
 
         x_new = cs_x(des_t)
         y_new = cs_y(des_t)
         z_new = cs_z(des_t)
-        print(len(z_new))
 
         # 4. Neue Stück-Trajektorie ans Ende hängen (oder ersetzen)
         self.x_des = np.concatenate((self.x_des[:self._tick], x_new, self.x_des[self._tick + len(x_new):]))
         self.y_des = np.concatenate((self.y_des[:self._tick], y_new, self.y_des[self._tick + len(y_new):]))
         self.z_des = np.concatenate((self.z_des[:self._tick], z_new, self.z_des[self._tick + len(z_new):]))
-        print(len(self.x_des))
+        print(f"letzter der alten: {self.x_des[self._tick]}")
+        print(f"erster der neuen: {x_new[0]}")
+        print(f"letzter der neuen: {x_new[-1]}")
+        print(f"erster der alten: {self.x_des[self._tick + len(x_new)]}")
 
         print(f"✅ Trajektorie-Teil ab Index {waypoint_idx} erfolgreich ersetzt.")
         
