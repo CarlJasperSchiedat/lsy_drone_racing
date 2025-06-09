@@ -23,6 +23,8 @@ from lsy_drone_racing.control import Controller
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+import threading
+
 
 def export_quadrotor_ode_model() -> AcadosModel:
     """Symbolic Quadrotor Model."""
@@ -238,6 +240,15 @@ class MPController(Controller):
         self.freq = config.env.freq
         self._tick = 0
 
+
+
+        # Hintergrundprozess zur Trajektorienplanung starten
+        self._lock = threading.Lock() # Verhindert Probleme beim Lesen/Schreiben gemeinsam genutzter Variablen: self._lock.acquire() + self._lock.release() oder with self._lock: 
+        self._thread = threading.Thread(target=self._plan_trajectory) # ruft self._plan_trajectory() im Hintergrund auf
+        self._thread.start()
+
+
+
         # Same waypoints as in the trajectory controller. Determined by trial and error.
         waypoints = np.array(
             [
@@ -280,6 +291,21 @@ class MPController(Controller):
         self.last_f_cmd = 0.3
         self.config = config
         self.finished = False
+
+
+
+    def _plan_trajectory(self):
+        """
+        Hintergrundprozess zur Trajektorienplanung.
+        Überprüfung ob neues Objekt erkannt wurde -> Trajektorie neu planen.
+        """
+        
+        print("Hintergrundprozess ist drin")
+
+
+
+
+
 
     def compute_control(
         self, obs: dict[str, NDArray[np.floating]], info: dict | None = None

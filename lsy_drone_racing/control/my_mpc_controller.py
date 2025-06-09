@@ -12,6 +12,7 @@ import threading
 import time
 import json
 
+
 from scipy.spatial.transform import Rotation as R
 from numpy.typing import NDArray
 
@@ -43,20 +44,13 @@ class MyMPCController(Controller):
 
 
         # initial geplante Trajektorie
-        traj_path = "plot/traj_data/opt_traj_0406_newbounds_1.json"
+        traj_path = "plot/traj_data/opt_traj_ohneVel_anZwischengate_changedbounds_2.json"
         with open(traj_path, "r") as f:
             traj_data = json.load(f)
         # self.trajectory = np.array(traj_data["X_opt"])[:, :3] # Trajektorie - nur Positionen
         self.trajectory = np.array(traj_data["X_opt"]) # Trajektorie - vollständige Zustände
         self.section_ticks = np.array(traj_data["N_opt"])  # Anzahl der Ticks pro Abschnitt
         # self._planning_done = False
-        
-
-        # Hintergrundprozess zur Trajektorienplanung starten
-        self._lock = threading.Lock() # Verhindert Probleme beim Lesen/Schreiben gemeinsam genutzter Variablen: self._lock.acquire() + self._lock.release() oder with self._lock: 
-        self._thread = threading.Thread(target=self._plan_trajectory) # ruft self._plan_trajectory() im Hintergrund auf
-        self._thread.start()
-
 
         # Initialisierung des Solvers für MPC
         self.N_Horizon = 30
@@ -68,6 +62,12 @@ class MyMPCController(Controller):
         self.last_f_cmd = 0.3                    # MÖGLICHERWEISE BESSER INITIALISIEREN
         self.last_rpy_cmd = np.zeros(3)
 
+        # Hintergrundprozess zur Trajektorienplanung starten
+        self._lock = threading.Lock() # Verhindert Probleme beim Lesen/Schreiben gemeinsam genutzter Variablen: self._lock.acquire() + self._lock.release() oder with self._lock: 
+        self._thread = threading.Thread(target=lambda: None)  # Dummy-Thread
+        # self._thread = threading.Thread(target=self._plan_trajectory) # ruft self._plan_trajectory() im Hintergrund auf
+        # self._thread.start()
+
 
 
 
@@ -78,22 +78,16 @@ class MyMPCController(Controller):
         Überprüfung ob neues Objekt erkannt wurde -> Trajektorie neu planen.
         """
 
+        print("\n Hintergrundprozess ist drin \n")
+
         if self.obs is None: # Falls compute_control noch nicht aufgerufen wurde
+            # print("\n UND sofort raus \n")
             return
+        # print(self.obs)
 
-        update = False
 
-        for idx in range(4):
-            if self.obs["gates_visited"][idx] and not self.gate_updated[idx]:
-                print("Gate erkannt:", idx+1)
-                update = True
-                self.gate_updated[idx] = True
 
-            if self.obs["obstacles_visited"][idx] and not self.obstacle_updated[idx]:
-                print("Obstacle erkannt:", idx+1)
-                update = True
-                self.obstacle_updated[idx] = True
-
+        update = True
 
         if update: # Falls irgendein Gate/Obstacle erkannt wurde, aber noch nicht geupdated uwrde -> Trajektorie neu planen
             print("In Update der Trajektorie gegangen")
@@ -133,8 +127,8 @@ class MyMPCController(Controller):
             print(f"⏱️ Recompute duration: {elapsed_time:.6f} seconds")
 
 
-        with self._lock: # Speichere die Trajektorie im gemeinsamen Speicher
-            self.trajectory[ab_tick:ab_tick + len(traj_section)] = traj_section
+            with self._lock: # Speichere die Trajektorie im gemeinsamen Speicher
+                self.trajectory[ab_tick:ab_tick + len(traj_section)] = traj_section
 
 
 
@@ -162,6 +156,25 @@ class MyMPCController(Controller):
             self.obs = obs
             trajectory_local = self.trajectory
             tick_local = self.tick
+
+
+
+
+        update = False
+        for idx in range(4):
+            if self.obs["gates_visited"][idx] and not self.gate_updated[idx]:
+                print("Gate erkannt:", idx+1)
+                update = True
+                self.gate_updated[idx] = True
+
+            if self.obs["obstacles_visited"][idx] and not self.obstacle_updated[idx]:
+                print("Obstacle erkannt:", idx+1)
+                update = True
+                self.obstacle_updated[idx] = True
+        if update and not self._thread.is_alive():
+                self._thread = threading.Thread(target=self._plan_trajectory)
+                self._thread.start()
+        
 
         # Index for aktuellen Durchlauf
         idx = min(tick_local, trajectory_local.shape[0] - 1)

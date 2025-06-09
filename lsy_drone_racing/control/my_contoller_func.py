@@ -208,7 +208,7 @@ def recompute_trajectory(trajectory, gate_pos, gate_quat, obstacles, N_list, cur
             cost += 1e-1 * sumsqr(xi_next[:3] - xi[:3]) # Position change minimization # 1e-0
 
             # Obstacle penalty
-            if obstacles: 
+            if obstacles.any(): 
                 for idx_obs, obs in enumerate(obstacles):
                     dist = sumsqr(xi[0:2] - obs[0:2])
                     cost += 1.0 * exp(-100 * dist)
@@ -271,8 +271,8 @@ def recompute_trajectory(trajectory, gate_pos, gate_quat, obstacles, N_list, cur
     # Start-Gate: Position + Velocity fix
     # g += [X[0][0:6] - DM(np.concatenate([trajectory[current_tick], current_vel]))] # Startposition und -geschwindigkeit nur fest
     g += [X[0] - DM(start_state)] # gesamter Startzustand festgelegt - durch Observations am besten
-    lbg += [0]*6
-    ubg += [0]*6
+    lbg += [0]*nx
+    ubg += [0]*nx
 
 
     # Ziel-Gate: Position als UGB + Velocity frei
@@ -472,6 +472,7 @@ def create_ocp_solver(
 
 
 
+
     # Alte JSON löschen
     if os.path.exists("my_mpc_controller.json"):
         os.remove("my_mpc_controller.json")
@@ -488,7 +489,7 @@ def create_ocp_solver(
     if os.path.exists(dll_actual) and not os.path.exists(dll_expected):
         os.rename(dll_actual, dll_expected)
         print(f"🛠️ DLL umbenannt: {dll_actual} ➝ {dll_expected}")
-
+    
 
 
     acados_ocp_solver = AcadosOcpSolver(ocp, json_file="my_mpc_controller.json", verbose=verbose) # speichere die Konfiguration in einer JSON-Datei
