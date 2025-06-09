@@ -391,6 +391,7 @@ class MPController(Controller):
             else:
                 print('Changes were detected, obstacle:',self._tick)
                 print("update prev_obstacle welche benutzte werden für NB")
+                
         
 
 
