@@ -27,9 +27,9 @@ if TYPE_CHECKING:
 import csv
 import os
 # Workaround für acados auf Windows – sorgt dafür, dass Kompilierung klappt
-os.environ["CC"] = "gcc"
-os.environ["LD"] = "gcc"
-os.environ["RM"] = "del"
+# os.environ["CC"] = "gcc"
+# os.environ["LD"] = "gcc"
+# os.environ["RM"] = "del"
 
 
 
