@@ -2,9 +2,18 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
+from casadi import DM
+import json
+import os
+
+# from optimal_traj_2gates import optimize_waypoint_positions
+# from optimal_trajectory import optimize_waypoint_pos_and_num
+from optimizer_help_func import optimize_full_trajectory_random, optimize_from_given_N_list_random
+from optimizer import optimize_original, optimize_velocity_bounded
+
 
 def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_positions, gates_quat):
-    
+
     def quaternion_to_rotation_matrix(q):
         x, y, z, w = q
         R = np.array([
@@ -13,6 +22,11 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
             [2*(x*z - y*w),    2*(y*z + x*w),    1-2*(x**2+y**2)]
         ])
         return R
+    
+    def rotate_and_translate(square, R, gate):
+        return (R @ square.T).T + gate
+
+
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -22,7 +36,8 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
     ax.plot(waypoints[:,0], waypoints[:,1], waypoints[:,2], 'bo-', label='Waypoints', markersize=2)
 
     # Gates als rotierte Quadrate
-    gate_size = 0.2
+    gate_size = 0.45 / 2
+    gate_size_outer = gate_size + 0.05
     gate_color = (1, 0, 0, 0.5)
     gates_positions = np.array(gates_positions)
 
@@ -30,18 +45,26 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
         quat = gates_quat[i]
         R = quaternion_to_rotation_matrix(quat)
 
-        local_square = np.array([
+        # Inner gate (actual fly-through area)
+        inner_square = np.array([
             [-gate_size, 0, -gate_size],
             [ gate_size, 0, -gate_size],
             [ gate_size, 0,  gate_size],
             [-gate_size, 0,  gate_size],
         ])
-
-        rotated_square = (R @ local_square.T).T
-        square = rotated_square + gate
-
-        poly = Poly3DCollection([square], color=gate_color, label='Gate' if i == 0 else "")
+        inner_square = rotate_and_translate(inner_square, R, gate)
+        poly = Poly3DCollection([inner_square], color=gate_color, label='Gate' if i == 0 else "")
         ax.add_collection3d(poly)
+
+        outer_square = np.array([
+            [-gate_size_outer, 0, -gate_size_outer],
+            [ gate_size_outer, 0, -gate_size_outer],
+            [ gate_size_outer, 0,  gate_size_outer],
+            [-gate_size_outer, 0,  gate_size_outer],
+        ])
+        outer_transformed = rotate_and_translate(outer_square, R, gate)
+        poly_outer = Poly3DCollection([outer_transformed], color=gate_color)
+        ax.add_collection3d(poly_outer)
 
     # Gate-Zentren markieren
     ax.scatter(gates_positions[:,0], gates_positions[:,1], gates_positions[:,2], c='r', s=50, label=None)
@@ -63,71 +86,29 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
     ax.set_title('3D Waypoints mit Stäben und rotierbaren Gates')
     plt.show()
 
-waypoints=[[ 1.,1.5 ,0.05],
- [ 0.97807474 , 1.41906259,  0.07093467],
- [ 0.95722695 , 1.35856363,  0.08801094],
- [ 0.93718154  ,1.31328481 , 0.10221392],
- [ 0.91766339,  1.27800779 , 0.11452874],
- [ 0.89839742 , 1.24751423 , 0.12594053],
- [ 0.87910853 , 1.21658582 , 0.13743441],
- [ 0.85952161 , 1.18000422 , 0.14999552],
- [ 0.83936157 , 1.13255109 , 0.16460897],
- [ 0.8183533  , 1.06900811 , 0.18225989],
- [ 0.79622202 , 0.98416553 , 0.20393177],
- [ 0.77279455 , 0.87572152 , 0.23005236],
- [ 0.74814685 , 0.74850259 , 0.25968711],
- [ 0.72239237 , 0.60840747 , 0.29169658],
- [ 0.69564453 , 0.46133491 , 0.32494129],
- [ 0.6680193  , 0.31317301 , 0.3582842 ],
- [ 0.63993829 , 0.16852348 , 0.39088005],
- [ 0.6124167  , 0.02948965 , 0.42245028],
- [ 0.58653794 ,-0.1021122  , 0.45278141],
- [ 0.56338542 ,-0.22446579 , 0.48165999],
- [ 0.54399283 ,-0.33580057 , 0.50886282],
- [ 0.52641067 ,-0.43708961 , 0.53358171],
- [ 0.50406552 ,-0.53355861 , 0.55410179],
- [ 0.46998619 ,-0.6307991  , 0.56863018],
- [ 0.41720151 ,-0.7344026  , 0.57537402],
- [ 0.33917788 ,-0.84973675 , 0.57269671],
- [ 0.24483091 ,-0.97426555 , 0.56447965],
- [ 0.16228524 ,-1.09562587 , 0.56146507],
- [ 0.12086633 ,-1.20084025 , 0.5748241 ],
- [ 0.1498996  ,-1.27693124 , 0.61572786],
- [ 0.27693158 ,-1.31115757 , 0.69461558],
- [ 0.48859395 ,-1.29621059 , 0.80509241],
- [ 0.73060347 ,-1.23021423 , 0.92392951],
- [ 0.94689802 ,-1.11152864 , 1.0271661 ],
- [ 1.08141548 ,-0.93851396 , 1.09084139],
- [ 1.08159545 ,-0.7103144  , 1.09245912],
- [ 0.95089526 ,-0.43861729 , 1.03295063],
- [ 0.73782527 ,-0.14519788 , 0.93208927],
- [ 0.49217201 , 0.1478828  , 0.81018212],
- [ 0.26372199 , 0.41856375 , 0.68753625],
- [ 0.09896964 , 0.64628606 , 0.58368175],
- [ 0.00613888 , 0.82795281 , 0.50911636],
- [-0.03123703 , 0.97173292 , 0.46851048],
- [-0.03003631 , 1.08598304 , 0.46643743],
- [-0.00713722 , 1.17905984 , 0.50747048],
- [ 0.02124037 , 1.25775577 , 0.59447836],
- [ 0.04460691 , 1.31524897 , 0.7154938 ],
- [ 0.05542331 , 1.33770761 , 0.85091054],
- [ 0.0461749  , 1.31124192 , 0.9810592 ],
- [ 0.00934698 , 1.22196217 , 1.08627038],
- [-0.06073156 , 1.05943643 , 1.14971121],
- [-0.15747583 , 0.83622058 , 1.17340576],
- [-0.26930119 , 0.57424818 , 1.16707068],
- [-0.38460824 , 0.29548043  ,1.14044531],
- [-0.49179758 , 0.02187857 , 1.10326899],
- [-0.57926983 ,-0.2245962 ,  1.06528106],
- [-0.63542559 ,-0.42198266 , 1.03622086],
- [-0.64866546 ,-0.54831959,  1.02582772],
- [-0.60739007 ,-0.58164578 , 1.04384099],
- [-0.5        ,-0.5        , 1.1       ],]
+
+
+
+waypoints = np.array(
+    [
+        [1.0, 1.5, 0.05],
+        [0.8, 1.0, 0.2],
+        [0.55, -0.3, 0.5], # gate 0
+        [0.1, -1.5, 0.65],
+        [1.1, -0.85, 1.15], # gate 1
+        [0.2, 0.5, 0.65],
+        [0.0, 1.2, 0.525], # gate 2
+        [0.0, 1.2, 1.1],
+        [-0.5, 0.0, 1.1], # gate 3
+        [-0.5, -0.5, 1.1],
+        [-0.5, -1.0, 1.1],
+    ]
+)
 
 obstacles_positions = [
-    [1, 0, 1.4],
-    [0.5, -1, 1.4],
-    [0, 1.5, 1.4],
+    [1.0, 0.0, 1.4],
+    [0.5, -1.0, 1.4],
+    [0., 1.5, 1.4],
     [-0.5, 0.5, 1.4],
 ]
 
@@ -138,11 +119,83 @@ gates_positions = [
     [-0.5, 0.0, 1.11],
 ]
 
-gates_quat = [
+gates_quat = [   # sind als rpy gegeben und nicht als Quaternion ??????? -> z.B. siehe level0.toml
     [0.0, 0.0, 0.92388, 0.38268],
     [0.0, 0.0, -0.38268, 0.92388],
     [0.0, 0.0, 0.0, 1.0],
     [0.0, 0.0, 1.0, 0.0],
 ]
 
+
+
 plot_waypoints_and_environment(waypoints, obstacles_positions, gates_positions, gates_quat)
+
+
+'''
+gate_1 = DM(gates_positions[0] + gates_quat[0])  # [x, y, z, qx, qy, qz, qw]
+gate_2 = DM(gates_positions[1] + gates_quat[1])  # [x, y, z, qx, qy, qz, qw]
+
+X_opt, N_opt = optimize_waypoint_pos_and_num(gate_1, gate_2, obstacles_positions, 1.5, 2.5, step=10)
+
+print("N_opt:", N_opt)
+print("optimale Zeit:", N_opt * 1/50)
+
+plot_waypoints_and_environment(X_opt, obstacles_positions, gates_positions, gates_quat)
+'''
+
+
+
+
+start_vel = [0, 0, 0.1]
+velocity_gate4 = [0, -2, 0] # wird nicht verwendet - velocity in gate richtung wird betrachtet in UGB
+
+start_pos = [1.0, 1.5, 0.0]
+
+extended_gates = [start_pos] + gates_positions
+extended_gates_quat = [[0, 0, 0, 0]] + gates_quat # der erste Eintrag wird nicht verwendet, da kein richtiges Gate
+
+# gates = [start_pos, gates_positions[0], gates_positions[1]]
+
+
+# X_opt, N_opt = optimize_full_trajectory_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, t_min=10, t_max=18, step=1, random_iteraitions=10)
+
+# N_list = [72, 99, 73, 106]
+# X_opt, N_opt = optimize_waypoint_positions(extended_gates, extended_gates_quat, N_list, obstacles_positions, start_vel, velocity_gate4, dt=1/50)
+
+N_opt = [60, 80, 80, 80] # 6 sec - normal
+N_opt = [63, 87, 71, 79] # 6 sec - optimized
+N_opt = [100, 133, 133, 133] # 10 sec - normal
+N_opt = [105, 145, 118, 132] # 10 sec - optimized 6 scaled
+N_opt = [100, 150, 140, 110] # 10 sec - optimized
+# N_opt = [35, 55, 45, 40] # 4 sec - optimized
+# X_opt, cost = optimize_velocity_bounded(extended_gates, extended_gates_quat, N_opt, obstacles_positions, start_vel, velocity_gate4, dt=1/50)
+X_opt, N_opt, cost = optimize_from_given_N_list_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, N_opt, iterations=10, max_shift=0.1, shorten=[], lengthen=[])
+
+
+
+
+
+
+
+
+
+
+
+
+print("N_opt:", N_opt)
+print("optimale Zeiten:", np.array(N_opt) * (1/50) )
+print("optimale Gesamtzeit:", sum(N_opt) * (1/50))
+print("optimale Kosten: ", cost)
+
+plot_waypoints_and_environment(X_opt, obstacles_positions, gates_positions, gates_quat)
+
+# Daten Speichern
+output_data = {
+    "N_opt": N_opt,
+    "X_opt": np.array(X_opt).tolist()
+}
+output_dir = os.path.join("plot", "traj_data")
+output_path = os.path.join(output_dir, "opt__test.json")
+with open(output_path, "w") as f:
+    json.dump(output_data, f, indent=2)
+print(f"✅ Optimierungsdaten gespeichert in: {output_path}")
