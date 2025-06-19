@@ -240,7 +240,7 @@ def create_ocp_solver(
         # os.rename(dll_actual, dll_expected)
         print(f"🛠️ DLL umbenannt: {dll_actual} ➝ {dll_expected}")
 
-
+ 
 
     acados_ocp_solver = AcadosOcpSolver(ocp, json_file="lsy_example_mpc.json", verbose=verbose)
 
