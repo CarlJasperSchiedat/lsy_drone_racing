@@ -106,7 +106,7 @@ def extend_trajectory(waypoints, ticks, X_opt, n_extra=5, spacing=10, dt=1/50):
 
 
 
-file_name = "10_sec__18_06_25_3"
+file_name = "6_sec__15_06_25_3"
 
 
 

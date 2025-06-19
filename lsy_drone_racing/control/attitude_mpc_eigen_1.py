@@ -109,16 +109,6 @@ def export_quadrotor_ode_model() -> AcadosModel:
         dp_cmd,
         dy_cmd,
     )
-    # Define the pole location and radius##################################
-    pole_x = 0.4857328
-    pole_y = -0.8829206
-    pole_radius = 0.14
-    
-    # Constraint: must stay outside the pole area
-    # Formulated as (px-pole_x)^2 + (py-pole_y)^2 ≥ radius^2
-    # Which becomes (px-pole_x)^2 + (py-pole_y)^2 - radius^2 ≥ 0
-    h_expr = (px - pole_x)**2 + (py - pole_y)**2 - pole_radius**2
-
     # Initialize the nonlinear model for NMPC formulation
     model = AcadosModel()
     model.name = model_name
@@ -127,8 +117,6 @@ def export_quadrotor_ode_model() -> AcadosModel:
     model.x = states
     model.u = inputs
 
-    # Add the nonlinear constraint expression
-    model.con_h_expr = h_expr
 
     return model
 
@@ -162,7 +150,7 @@ def create_ocp_solver(
     # Weights
     Q = np.diag(
         [
-            10.0, 10.0, 10.0, # Position
+            100.0, 100.0, 100.0, # Position
             0.01, 0.01, 0.01, # 10.0, 10.0, 10.0, # Velocity
             0.1, 0.1, 0.1, # rpy
             0.01, 0.01, # f_collective, f_collective_cmd
@@ -636,57 +624,6 @@ class MPController(Controller):
         print(f"✅ Neue Teiltrajektorie (Spline) um Gate {gate_idx} aktualisiert.")
 
 
-
-
-        '''
-        wp_slice = self.waypoints[waypoint_idx:waypoint_idx + segemnt_number]
-        print(wp_slice)
-
-        if len(wp_slice) < segemnt_number:
-            print("⚠️ Nicht genug Waypoints für ein Update")
-            return
-
-
-        # 2. Neuen Spline über x Waypoints erzeugen
-        ts_partial = np.linspace(0, 1, len(wp_slice))
-        cs_x = CubicSpline(ts_partial, wp_slice[:, 0])
-        cs_y = CubicSpline(ts_partial, wp_slice[:, 1])
-        cs_z = CubicSpline(ts_partial, wp_slice[:, 2])
-
-
-        # 3. Sampling auf diesen Teil
-        ticks_per_segment = int( self.freq * self.des_completion_time) // (len(self.waypoints) - 1 )
-        des_t = np.linspace(0, 1, ticks_per_segment * segemnt_number)
-
-        x_new = cs_x(des_t)
-        y_new = cs_y(des_t)
-        z_new = cs_z(des_t)
-
-
-
-
-
-        # 💾 Alte Teildaten sichern
-        x_old = self.x_des[waypoint_tick:waypoint_tick + len(x_new)]
-        y_old = self.y_des[waypoint_tick:waypoint_tick + len(y_new)]
-        z_old = self.z_des[waypoint_tick:waypoint_tick + len(z_new)]
-        self.save_traj_update_csv(waypoint_tick, np.stack([x_old, y_old, z_old], axis=1), np.stack([x_new, y_new, z_new], axis=1))
-
-
-
-
-
-        # 4. Neue Stück-Trajektorie ans Ende hängen (oder ersetzen)
-        self.x_des = np.concatenate((self.x_des[:waypoint_tick], x_new, self.x_des[waypoint_tick + len(x_new):]))
-        self.y_des = np.concatenate((self.y_des[:waypoint_tick], y_new, self.y_des[waypoint_tick + len(y_new):]))
-        self.z_des = np.concatenate((self.z_des[:waypoint_tick], z_new, self.z_des[waypoint_tick + len(z_new):]))
-        #print(f"letzter der alten: {self.x_des[self._tick]}")
-        #print(f"erster der neuen: {x_new[0]}")
-        #print(f"letzter der neuen: {x_new[-1]}")
-        #print(f"erster der alten: {self.x_des[self._tick + len(x_new)]}")
-
-        print(f"✅ Trajektorie-Teil ab Index {waypoint_idx} erfolgreich ersetzt.")
-        '''
 
 
 

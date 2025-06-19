@@ -88,6 +88,23 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
 
 
 
+
+waypoints = np.array(
+    [
+        [1.0, 1.5, 0.05],
+        [0.8, 1.0, 0.2],
+        [0.55, -0.3, 0.5], # gate 0
+        [0.1, -1.5, 0.65],
+        [1.1, -0.85, 1.15], # gate 1
+        [0.2, 0.5, 0.65],
+        [0.0, 1.2, 0.525], # gate 2
+        [0.0, 1.2, 1.1],
+        [-0.5, 0.0, 1.1], # gate 3
+        [-0.5, -0.5, 1.1],
+        [-0.5, -1.0, 1.1],
+    ]
+)
+
 obstacles_positions = [
     [1.0, 0.0, 1.4],
     [0.5, -1.0, 1.4],
@@ -110,9 +127,9 @@ gates_quat = [   # sind als rpy gegeben und nicht als Quaternion ??????? -> z.B.
 ]
 
 
-'''
+
 plot_waypoints_and_environment(waypoints, obstacles_positions, gates_positions, gates_quat)
-'''
+
 
 '''
 gate_1 = DM(gates_positions[0] + gates_quat[0])  # [x, y, z, qx, qy, qz, qw]

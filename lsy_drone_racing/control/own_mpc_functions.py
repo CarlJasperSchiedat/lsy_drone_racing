@@ -205,6 +205,16 @@ def export_quadrotor_ode_model_for_recompute() -> AcadosModel:
         dy_cmd,
     )
 
+    # Input, Angle Penalty for smooth control / trajectory
+    # R_u = np.diag([1e-3, 1e-3, 1e-3, 1e-3])
+    # input_pen = mtimes([inputs.T, R_u, inputs])
+    Q_control = 0.01
+    control_penalty = df_cmd**2 + dr_cmd**2 + dp_cmd**2 + dy_cmd**2
+    Q_angle = 0.01
+    angle_penalty = roll**2 + pitch**2  # Yaw penalty optional
+
+
+
     # Parameter-Vektor für das Gate welches Durchflogen werden soll  (Gate-Mitte + Rotation)
     p_gate = MX.sym("p_gate", 3)
     R_gate = MX.sym("R_gate", 9)
@@ -215,18 +225,16 @@ def export_quadrotor_ode_model_for_recompute() -> AcadosModel:
                  vertcat(px, py, pz) - p_gate)
 
     border = 0.225          # halbe Öffnung
-    w_g    = 2e3            # Gewicht „Mitte halten“
+    Q_gate = 10            # Gewicht „Mitte halten“
 
     y_weight = exp(-((rel[1] / 0.7) ** 4) * 3000)
     x_borderdist_cost = ( - 1500 * ((fabs(rel[0]) - border) / 0.4 )**6 )
     z_borderdist_cost = ( - 1500 * ((fabs(rel[2]) - border) / 0.4 )**6 )
 
-    gate_pen = w_g * y_weight * (x_borderdist_cost + z_borderdist_cost)
+    gate_penalty = y_weight * (x_borderdist_cost + z_borderdist_cost)
 
-    R_u = np.diag([1e-3, 1e-3, 1e-3, 1e-3])
-    input_pen = mtimes([inputs.T, R_u, inputs])
-
-    ext_cost_stage    = gate_pen     +     input_pen  # Gate Penalty   +   Standard Input Penalty
+    ext_cost_stage    = ( Q_gate * gate_penalty + 
+        Q_control * control_penalty + Q_angle * angle_penalty )
     ext_cost_terminal = MX(0)                               # Terminal Penalty = 0
 
 
@@ -241,8 +249,8 @@ def export_quadrotor_ode_model_for_recompute() -> AcadosModel:
     model.p           = p
     model.f_expl_expr = f
     model.f_impl_expr = None
-    model.ext_cost_expr   = ext_cost_stage
-    model.ext_cost_expr_e = ext_cost_terminal
+    model.cost_expr_ext_cost = ext_cost_stage
+    model.cost_expr_ext_cost_e = ext_cost_terminal 
 
 
     return model
@@ -385,6 +393,9 @@ def create_ocp_solver_for_recompute(
 
     # Horizont- & Solver-Settings
     ocp.dims.N            = N          # Anzahl Shooting-Intervals
+
+    # Set dimensions
+    ocp.solver_options.N_horizon = N
     ocp.solver_options.tf = Tf         # Horizontlänge in s
 
     ocp.solver_options.qp_solver        = "FULL_CONDENSING_HPIPM"
@@ -394,11 +405,10 @@ def create_ocp_solver_for_recompute(
     ocp.solver_options.tol              = 1e-5
     ocp.solver_options.qp_solver_cond_N = N
     ocp.solver_options.qp_solver_warm_start = 1
-    ocp.solver_options.qp_solver_iter_max   = 20
-    ocp.solver_options.nlp_solver_max_iter  = 50
+    ocp.solver_options.qp_solver_iter_max   = 40 #20
+    ocp.solver_options.nlp_solver_max_iter  = 100 #50
 
-    # Set dimensions
-    ocp.solver_options.N_horizon = N
+
 
     ## Set Cost
     # For more Information regarding Cost Function Definition in Acados: https://github.com/acados/acados/blob/main/docs/problem_formulation/problem_formulation_ocp_mex.pdf

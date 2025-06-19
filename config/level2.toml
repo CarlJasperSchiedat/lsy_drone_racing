@@ -4,7 +4,7 @@
 # | :-----------------: | :-----------------------: | :-------------------------: | :-------------------: |
 # | `level2.toml`       | **Yes**                   | **Yes**                     | Learning, re-planning |
 [controller]
-file = "attitude_mpc_eigen.py" # Put your controller file name here. Specifying a controller as argument to scripts will override this setting. Controllers are located in `lsy_drone_racing/control/`
+file = "attitude_mpc_eigen_2.py" # Put your controller file name here. Specifying a controller as argument to scripts will override this setting. Controllers are located in `lsy_drone_racing/control/`
 # my_mpc_controller # attitude_mpc_eigen
 
 [deploy]
@@ -93,6 +93,8 @@ fn = "uniform"
 [env.randomizations.drone_mass.kwargs]
 minval = -0.01
 maxval = 0.01
+#minval = -0.00001
+#maxval = 0.00001
 
 [env.randomizations.drone_inertia]
 fn = "uniform"
@@ -115,7 +117,7 @@ maxval = [0.0, 0.0, 0.1]
 [env.randomizations.obstacle_pos]
 fn = "uniform"
 [env.randomizations.obstacle_pos.kwargs]
-#minval = [-0.15, -0.15, -0.05]
-#maxval = [0.15, 0.15, 0.05]
-minval = [-0.01, -0.01, -0.01]
-maxval = [0.01, 0.01, 0.01]
+minval = [-0.15, -0.15, -0.05]
+maxval = [0.15, 0.15, 0.05]
+#minval = [-0.01, -0.01, -0.01]
+#maxval = [0.01, 0.01, 0.01]
