@@ -27,9 +27,9 @@ if TYPE_CHECKING:
 import csv
 import os
 # Workaround für acados auf Windows – sorgt dafür, dass Kompilierung klappt
-# os.environ["CC"] = "gcc"
-# os.environ["LD"] = "gcc"
-# os.environ["RM"] = "del"
+os.environ["CC"] = "gcc"
+os.environ["LD"] = "gcc"
+os.environ["RM"] = "del"
 
 
 
@@ -237,7 +237,7 @@ def create_ocp_solver(
     dll_actual = "c_generated_code/libacados_ocp_solver_lsy_example_mpc.dll"
 
     if os.path.exists(dll_actual) and not os.path.exists(dll_expected):
-        # os.rename(dll_actual, dll_expected)
+        os.rename(dll_actual, dll_expected)
         print(f"🛠️ DLL umbenannt: {dll_actual} ➝ {dll_expected}")
 
  
