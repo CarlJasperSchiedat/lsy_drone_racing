@@ -11,6 +11,7 @@ from __future__ import annotations  # Python 3.10 type hints
 
 from typing import TYPE_CHECKING
 
+import json
 import numpy as np
 import scipy
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
@@ -23,7 +24,7 @@ from lsy_drone_racing.control import Controller
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-
+import csv
 import os
 # Workaround für acados auf Windows – sorgt dafür, dass Kompilierung klappt
 os.environ["CC"] = "gcc"
@@ -161,20 +162,11 @@ def create_ocp_solver(
     # Weights
     Q = np.diag(
         [
-            10.0,
-            10.0,
-            10.0,  # Position
-            0.01,
-            0.01,
-            0.01,  # Velocity
-            0.1,
-            0.1,
-            0.1,  # rpy
-            0.01,
-            0.01,  # f_collective, f_collective_cmd
-            0.01,
-            0.01,
-            0.01,
+            10.0, 10.0, 10.0, # Position
+            0.01, 0.01, 0.01, # 10.0, 10.0, 10.0, # Velocity
+            0.1, 0.1, 0.1, # rpy
+            0.01, 0.01, # f_collective, f_collective_cmd
+            0.01, 0.01, 0.01, # rpy_cmd
         ]
     )  # rpy_cmd
 
@@ -211,6 +203,7 @@ def create_ocp_solver(
     # Set State Constraints
     ocp.constraints.lbx = np.array([0.1, 0.1, -1.57, -1.57, -1.57])
     ocp.constraints.ubx = np.array([0.55, 0.55, 1.57, 1.57, 1.57])
+    # ocp.constraints.ubx = np.array([0.7, 0.7, 1.57, 1.57, 1.57])
     ocp.constraints.idxbx = np.array([9, 10, 11, 12, 13])
 
     # Set Input Constraints
@@ -274,6 +267,9 @@ def create_ocp_solver(
     return acados_ocp_solver, ocp
 
 
+
+
+
 class MPController(Controller):
     """Example of a MPC using the collective thrust and attitude interface."""
 
@@ -289,78 +285,73 @@ class MPController(Controller):
         super().__init__(obs, info, config)
         self.freq = config.env.freq
         self._tick = 0
+
+
         self.y=[]
         self.y_mpc=[]
-        self.prev_obstacle = [
-            [1, 0, 1.4],
-            [0.5, -1, 1.4],
-            [0, 1.5, 1.4],
-            [-0.5, 0.5, 1.4],
-        ]
-        self.prev_gates_quat = [
-            [0.0, 0.0, 0.92268986, 0.38554308],
-            [0.0, 0.0, -0.38018841, 0.92490906],
-            [0.0, 0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0, 0.0],
-        ]
-        self.prev_gates=[
-            [0.45, -0.5, 0.56],
-            [1.1, -1.05, 1.11],
-            [0.0, 1.0, 0.56],
-            [-0.5, 0.0, 1.11],
-        ]
-        # Same waypoints as in the trajectory controller. Determined by trial and error.
-        self.waypoints = np.array(
-            [
-            [1.0, 1.5, 0.2],
-            [0.625, 0.25, 0.38],
-            [0.45, -0.5, 0.56],  # gate 0 = waypoint 2
-            [0.425, -0.57, 0.56],
-            [0.325, -0.9, 0.605],
-            [0.2, -1.3, 0.65],
-            [0.6, -1.375, 0.78],
-            [0.8, -1.375, 0.88],
-            [1.0, -1.05, 1.11], # gate 1 = waypoint 8
-            [1.1, -0.8, 1.11],
-            [0.7, -0.275, 0.88],
-            [0.2, 0.5, 0.65],
-            [0.0, 1.0, 0.56], # gate 2 = waypoint 12
-            [0.0, 1.05, 0.56],
-            [0.0, 0.9, 0.63],
-            [-0.1, 0.7, 0.75],
-            [-0.25, 0.3, 0.95],
-            [-0.5, 0.0, 1.1], # gate 3 = waypoint 17
-            [-0.5, -1.0, 1.1],
-            [-0.5, -2.0, 1.1],
-            [-0.5, -3.0, 1.1],
-            ]
-        )
-        self.gate_map = { # welches gate korrespondiert mit welchem waypoint
-            0: 2,
-            1: 8,
-            2: 12,
-            3: 17
-        }
 
-        # Scale trajectory between 0 and 1
-        ts = np.linspace(0, 1, np.shape(self.waypoints)[0])
-        cs_x = CubicSpline(ts, self.waypoints[:, 0])
-        cs_y = CubicSpline(ts, self.waypoints[:, 1])
-        cs_z = CubicSpline(ts, self.waypoints[:, 2])
 
-        self.des_completion_time = 25
-        ts = np.linspace(0, 1, int(self.freq * self.des_completion_time))
+        self.prev_obstacle = [ [1, 0, 1.4], [0.5, -1, 1.4], [0, 1.5, 1.4], [-0.5, 0.5, 1.4], ]
+        self.prev_gates_quat = [ [0.0, 0.0, 0.92268986, 0.38554308], [0.0, 0.0, -0.38018841, 0.92490906], [0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], ]
+        self.prev_gates=[ [0.45, -0.5, 0.56], [1.1, -1.05, 1.11], [0.0, 1.0, 0.56], [-0.5, 0.0, 1.11], ]
+
+
+
+
+        # Lade optimierte Waypoints
+        file_name = "10_sec__18_06_25_1"
+        with open(f"plot/traj_data/prepared_{file_name}.json", "r") as f:
+            data = json.load(f)
+            self.waypoints = np.array(data["waypoints"])
+            self.ticks = data["ticks"]
+            self.gate_map = {int(k): v for k, v in data["gate_idx_map"].items()}
+
+        tick_times = np.array(self.ticks) / self.freq
+        self.dt_segments = np.diff(self.ticks)
+        # segment_weights = self.dt_segments / np.sum(self.dt_segments)
+        ts = []
+        for i in range(len(tick_times) - 1):
+            t_start = tick_times[i]
+            t_end = tick_times[i + 1]
+            n_points = self.dt_segments[i]
+
+            # Gleichmäßige Zwischenpunkte für diesen Abschnitt
+            ts_seg = np.linspace(t_start, t_end, n_points, endpoint=False)
+            ts.extend(ts_seg)
+        # Letzten Punkt anhängen
+        ts.append(tick_times[-1])
+        ts = np.array(ts)
+
+
+
+        cs_x = CubicSpline(tick_times, self.waypoints[:, 0])
+        cs_y = CubicSpline(tick_times, self.waypoints[:, 1])
+        cs_z = CubicSpline(tick_times, self.waypoints[:, 2])
 
         self.x_des = cs_x(ts)
         self.y_des = cs_y(ts)
         self.z_des = cs_z(ts)
 
+        '''
+        # Geschwindigkeit ?
+        self.vx_des = cs_x.derivative()(ts)
+        self.vy_des = cs_y.derivative()(ts)
+        self.vz_des = cs_z.derivative()(ts)
+        '''
+
+
+
+
+        self.des_completion_time = 6
+
+
+
         self.N = 30
         self.T_HORIZON = 1.5
         self.dt = self.T_HORIZON / self.N
-        self.x_des = np.concatenate((self.x_des, [self.x_des[-1]] * (2 * self.N + 1)))
-        self.y_des = np.concatenate((self.y_des, [self.y_des[-1]] * (2 * self.N + 1)))
-        self.z_des = np.concatenate((self.z_des, [self.z_des[-1]] * (2 * self.N + 1)))
+        # self.x_des = np.concatenate((self.x_des, [self.x_des[-1]] * (2 * self.N + 1)))
+        # self.y_des = np.concatenate((self.y_des, [self.y_des[-1]] * (2 * self.N + 1)))
+        # self.z_des = np.concatenate((self.z_des, [self.z_des[-1]] * (2 * self.N + 1)))
 
         self.acados_ocp_solver, self.ocp = create_ocp_solver(self.T_HORIZON, self.N)
 
@@ -396,15 +387,19 @@ class MPController(Controller):
         if update:
             if update ==2:
                 print('Changes were detected, now we can update traj at:',self._tick)
-                ticks_per_segment = int(self.freq * self.des_completion_time) // (len(self.waypoints) - 1)
-                current_waypoint_idx = int( (self._tick-np.mod(self._tick,ticks_per_segment))  / ticks_per_segment )
-                print('The current waypoint ist:', (self._tick-np.mod(self._tick,ticks_per_segment))  / ticks_per_segment  )
-                print("ticks per segment:", ticks_per_segment)
 
-                self.update_traj(obs, current_waypoint_idx)
+                ticks_per_segment = int(self.freq * self.des_completion_time) // (len(self.waypoints) - 1)
+                waypoint_tick = int( (self._tick - np.mod(self._tick,ticks_per_segment)) )
+                current_waypoint_idx = int( waypoint_tick  / ticks_per_segment )
+
+                #print(f"The current Waypoint Calc: {(self._tick-np.mod(self._tick,ticks_per_segment))  / ticks_per_segment}")
+                #print(f"The ChatGPT Waypoint Calc: {self._tick // ticks_per_segment}")
+                #print("ticks per segment:", ticks_per_segment, "\n")
+
+                self.update_traj(obs, current_waypoint_idx, waypoint_tick)
             else:
                 print('Changes were detected, obstacle:',self._tick)
-                print("update prev_obstacle welche benutzte werden für NB")
+                print("update prev_obstacle welche benutzte werden für NB", "\n")
                 
         
 
@@ -429,55 +424,32 @@ class MPController(Controller):
                 rpy,
                 np.array([self.last_f_collective, self.last_f_cmd]),
                 self.last_rpy_cmd,
-            )
-        )
+            ) )
         self.acados_ocp_solver.set(0, "lbx", xcurrent)
         self.acados_ocp_solver.set(0, "ubx", xcurrent)
 
         self.y=[]
         for j in range(self.N):
-            yref = np.array(
-                [
-                    self.x_des[i + j],
-                    self.y_des[i + j],
-                    self.z_des[i + j],
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.35,
-                    0.35,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
-            )
+            yref = np.array([
+            self.x_des[i + j],  self.y_des[i + j],  self.z_des[i + j], # Position
+            0.0, 0.0, 0.0,
+            # self.vx_des[i + j], self.vy_des[i + j], self.vz_des[i + j], # Geschwindigkeit
+            0.0, 0.0, 0.0,      # r, p, y
+            0.35, 0.35,         # f_collective / _cmd
+            0.0, 0.0, 0.0,      # rpy_cmd
+            0.0, 0.0, 0.0, 0.0,
+        ])
+
             self.acados_ocp_solver.set(j, "yref", yref)  
             self.y.append(yref)
-        yref_N = np.array(
-            [
-                self.x_des[i + self.N],
-                self.y_des[i + self.N],
-                self.z_des[i + self.N],
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.35,
-                0.35,
-                0.0,
-                0.0,
-                0.0,
-            ]
-        )
+        yref_N = np.array([
+            self.x_des[i + self.N],  self.y_des[i + self.N],  self.z_des[i + self.N], # Position
+            0.0, 0.0, 0.0,
+            # self.vx_des[i + self.N], self.vy_des[i + self.N], self.vz_des[i + self.N], # Geschwindigkeit
+            0.0, 0.0, 0.0,      # r, p, y
+            0.35, 0.35,         # f_collective / _cmd
+            0.0, 0.0, 0.0,      # rpy_cmd
+        ])
         self.acados_ocp_solver.set(self.N, "yref", yref_N)
 
         self.acados_ocp_solver.solve()
@@ -491,6 +463,8 @@ class MPController(Controller):
 
         x1 = self.acados_ocp_solver.get(1, "x")
         w = 1 / self.config.env.freq / self.dt
+        # print(f"\n\nw = {w}\n\n")
+        w = 1
         self.last_f_collective = self.last_f_collective * (1 - w) + x1[9] * w
         self.last_f_cmd = x1[10]
         self.last_rpy_cmd = x1[11:14]
@@ -498,7 +472,17 @@ class MPController(Controller):
         cmd = x1[10:14]
 
 
-        
+
+        # Seve flown trajectory
+        if not hasattr(self, "log_ref"):
+            self.log_ref = []
+            self.log_real = []
+        # Referenzposition zum aktuellen Tick
+        self.log_ref.append([self.x_des[i], self.y_des[i], self.z_des[i]])
+        # Aktuelle Position
+        self.log_real.append(obs["pos"].tolist())
+
+
 
         return cmd
 
@@ -522,6 +506,23 @@ class MPController(Controller):
         """Reset the integral error."""
         self._tick = 0
 
+        # Sicherer Speicherordner
+        os.makedirs("logs", exist_ok=True)
+
+        data = {
+            "ref": self.log_ref,
+            "real": self.log_real
+        }
+
+        path = f"logs/trajectory_log.json"
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
+        print(f"📦 Trajektorienverlauf gespeichert unter: {path}")
+
+        # Optional: Zurücksetzen für nächste Episode
+        self.log_ref = []
+        self.log_real = []
 
 
     def check_for_update(self,obs):
@@ -550,18 +551,94 @@ class MPController(Controller):
 
         return flag
 
+
+
     
-    def update_traj(self, obs, waypoint_idx):
+    def update_traj(self, obs, waypoint_idx, waypoint_tick):
         """
         Set the cubic splines new from the current position
         """
+
+        if self._tick == 0:
+            print("Kein Update, Tick == 0")
+            return
+        
+
         for i, idx in self.gate_map.items(): # update the waypoints that correspond to a specific gate
             self.waypoints[idx] = self.prev_gates[i]
 
-
+        gate_idx = obs["target_gate"]
+        center_idx = self.gate_map[int(gate_idx)]
 
         # 1. Neue Sub-Waypoints auswählen
-        segemnt_number = 6
+        rel_indices = [-2, 0, 2, 3, 4, 5]
+        abs_indices = [
+            center_idx + i for i in rel_indices
+            if 0 <= center_idx + i < len(self.waypoints)
+        ]
+        if len(abs_indices) < 2:
+            print("⚠️ Nicht genug gültige Punkte für Splines.")
+            return
+
+
+        wp_section = self.waypoints[abs_indices]
+        tick_section = [self.ticks[i] for i in abs_indices]
+        tick_times = np.array(tick_section) / self.freq
+        dt_segments = np.diff(tick_section)
+        
+
+        print("rel_indices:      ", rel_indices)
+        print("abs_indices:      ", abs_indices)
+        print("tick_section:     ", tick_section)
+        print("tick_times:       ", tick_times)
+        print("dt_segments:      ", dt_segments)
+
+
+        ts = []
+        for i in range(len(dt_segments)):
+            t_start = tick_times[i]
+            t_end = tick_times[i + 1]
+            n_points = max(2, dt_segments[i])  # mind. 2 Punkte pro Segment
+            ts_seg = np.linspace(t_start, t_end, n_points, endpoint=False)
+            ts.extend(ts_seg)
+
+        ts.append(tick_times[-1])  # letzten Zeitpunkt ergänzen
+        ts = np.array(ts)
+
+
+        # --- 3. Neue Splines erstellen
+        cs_x = CubicSpline(tick_times, wp_section[:, 0])
+        cs_y = CubicSpline(tick_times, wp_section[:, 1])
+        cs_z = CubicSpline(tick_times, wp_section[:, 2])
+
+        x_new = cs_x(ts)
+        y_new = cs_y(ts)
+        z_new = cs_z(ts)
+        vx_new = cs_x.derivative()(ts) # Geschindigkei ?
+        vy_new = cs_y.derivative()(ts)
+        vz_new = cs_z.derivative()(ts)
+
+        # --- 4. Aktuelle Trajektorie ersetzen
+        tick_min = tick_section[0]
+        tick_max = tick_section[-1]
+        print(f"🔁 Ersetze Trajektorie von Tick {tick_min} bis {tick_max} ({tick_max - tick_min} Punkte)")
+
+        # self.x_des = np.concatenate((self.x_des[:tick_min], x_new, self.x_des[tick_max + 1:]))
+        # self.y_des = np.concatenate((self.y_des[:tick_min], y_new, self.y_des[tick_max + 1:]))
+        # self.z_des = np.concatenate((self.z_des[:tick_min], z_new, self.z_des[tick_max + 1:]))
+        self.x_des[tick_min:tick_max + 1]  = x_new
+        self.y_des[tick_min:tick_max + 1]  = y_new
+        self.z_des[tick_min:tick_max + 1]  = z_new
+        #self.vx_des[tick_min:tick_max + 1] = vx_new
+        #self.vy_des[tick_min:tick_max + 1] = vy_new
+        #self.vz_des[tick_min:tick_max + 1] = vz_new
+
+        print(f"✅ Neue Teiltrajektorie (Spline) um Gate {gate_idx} aktualisiert.")
+
+
+
+
+        '''
         wp_slice = self.waypoints[waypoint_idx:waypoint_idx + segemnt_number]
         print(wp_slice)
 
@@ -569,28 +646,61 @@ class MPController(Controller):
             print("⚠️ Nicht genug Waypoints für ein Update")
             return
 
-        # 2. Neuen Spline über 3 Waypoints erzeugen
+
+        # 2. Neuen Spline über x Waypoints erzeugen
         ts_partial = np.linspace(0, 1, len(wp_slice))
         cs_x = CubicSpline(ts_partial, wp_slice[:, 0])
         cs_y = CubicSpline(ts_partial, wp_slice[:, 1])
         cs_z = CubicSpline(ts_partial, wp_slice[:, 2])
 
+
         # 3. Sampling auf diesen Teil
-        ticks_per_segment = int(self.freq * self.des_completion_time) // (len(self.waypoints) - 1)
+        ticks_per_segment = int( self.freq * self.des_completion_time) // (len(self.waypoints) - 1 )
         des_t = np.linspace(0, 1, ticks_per_segment * segemnt_number)
 
         x_new = cs_x(des_t)
         y_new = cs_y(des_t)
         z_new = cs_z(des_t)
 
+
+
+
+
+        # 💾 Alte Teildaten sichern
+        x_old = self.x_des[waypoint_tick:waypoint_tick + len(x_new)]
+        y_old = self.y_des[waypoint_tick:waypoint_tick + len(y_new)]
+        z_old = self.z_des[waypoint_tick:waypoint_tick + len(z_new)]
+        self.save_traj_update_csv(waypoint_tick, np.stack([x_old, y_old, z_old], axis=1), np.stack([x_new, y_new, z_new], axis=1))
+
+
+
+
+
         # 4. Neue Stück-Trajektorie ans Ende hängen (oder ersetzen)
-        self.x_des = np.concatenate((self.x_des[:self._tick], x_new, self.x_des[self._tick + len(x_new):]))
-        self.y_des = np.concatenate((self.y_des[:self._tick], y_new, self.y_des[self._tick + len(y_new):]))
-        self.z_des = np.concatenate((self.z_des[:self._tick], z_new, self.z_des[self._tick + len(z_new):]))
-        print(f"letzter der alten: {self.x_des[self._tick]}")
-        print(f"erster der neuen: {x_new[0]}")
-        print(f"letzter der neuen: {x_new[-1]}")
-        print(f"erster der alten: {self.x_des[self._tick + len(x_new)]}")
+        self.x_des = np.concatenate((self.x_des[:waypoint_tick], x_new, self.x_des[waypoint_tick + len(x_new):]))
+        self.y_des = np.concatenate((self.y_des[:waypoint_tick], y_new, self.y_des[waypoint_tick + len(y_new):]))
+        self.z_des = np.concatenate((self.z_des[:waypoint_tick], z_new, self.z_des[waypoint_tick + len(z_new):]))
+        #print(f"letzter der alten: {self.x_des[self._tick]}")
+        #print(f"erster der neuen: {x_new[0]}")
+        #print(f"letzter der neuen: {x_new[-1]}")
+        #print(f"erster der alten: {self.x_des[self._tick + len(x_new)]}")
 
         print(f"✅ Trajektorie-Teil ab Index {waypoint_idx} erfolgreich ersetzt.")
+        '''
+
+
+
         
+    def save_traj_update_csv(self, tick: int, old_traj: np.ndarray, new_traj: np.ndarray):
+        os.makedirs("logs", exist_ok=True)
+        with open("logs/traj_update_log.csv", "a", newline="") as f:
+        # with open("traj_update_log.csv", "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["tick", tick])
+            writer.writerow(["old_x", "old_y", "old_z"])
+            writer.writerows(old_traj)
+            writer.writerow(["new_x", "new_y", "new_z"])
+            writer.writerows(new_traj)
+            writer.writerow([])  # Leerzeile zur Trennung
+
+        print(f"💾 Trajektorienupdate gespeichert bei Tick {tick}, Länge alt: {len(old_traj)}, neu: {len(new_traj)}")

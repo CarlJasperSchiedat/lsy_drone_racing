@@ -2,12 +2,15 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
-# from optimal_traj_2gates import optimize_waypoint_positions
-# from optimal_trajectory import optimize_waypoint_pos_and_num
-from optimal_full_traj import optimize_full_trajectory, optimize_waypoint_positions
 from casadi import DM
 import json
 import os
+
+# from optimal_traj_2gates import optimize_waypoint_positions
+# from optimal_trajectory import optimize_waypoint_pos_and_num
+from optimizer_help_func import optimize_full_trajectory_random, optimize_from_given_N_list_random
+from optimizer import optimize_original, optimize_velocity_bounded
+
 
 def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_positions, gates_quat):
 
@@ -22,6 +25,8 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
     
     def rotate_and_translate(square, R, gate):
         return (R @ square.T).T + gate
+
+
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -83,33 +88,6 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
 
 
 
-
-
-
-
-'''
-waypoints = [
-    [1.0, 1.5, 0.2],
-    [0.9, 1.25, 0.2],
-    [0.8, 1.0, 0.2],
-    [0.625, 0.25, 0.38],
-    [0.45, -0.5, 0.56],
-    [0.325, -0.9, 0.605],
-    [0.2, -1.3, 0.65],
-    [0.6, -1.175, 0.88],
-    [1.0, -1.05, 1.11],
-    [0.6, -0.275, 0.88],
-    [0.2, 0.5, 0.65],
-    [0.1, 0.75, 0.605],
-    [0.0, 1.0, 0.56],
-    [0.0, 1.1, 0.83],
-    [0.0, 1.2, 1.1],
-    [-0.25, 0.6, 1.105],
-    [-0.5, 0.0, 1.11],
-    [-0.5, -0.25, 1.105],
-    [-0.5, -0.5, 1.1],
-]
-'''
 obstacles_positions = [
     [1.0, 0.0, 1.4],
     [0.5, -1.0, 1.4],
@@ -130,6 +108,8 @@ gates_quat = [   # sind als rpy gegeben und nicht als Quaternion ??????? -> z.B.
     [0.0, 0.0, 0.0, 1.0],
     [0.0, 0.0, 1.0, 0.0],
 ]
+
+
 '''
 plot_waypoints_and_environment(waypoints, obstacles_positions, gates_positions, gates_quat)
 '''
@@ -148,10 +128,11 @@ plot_waypoints_and_environment(X_opt, obstacles_positions, gates_positions, gate
 
 
 
+
 start_vel = [0, 0, 0.1]
 velocity_gate4 = [0, -2, 0] # wird nicht verwendet - velocity in gate richtung wird betrachtet in UGB
 
-start_pos = [1.0, 1.5, 0.1]
+start_pos = [1.0, 1.5, 0.0]
 
 extended_gates = [start_pos] + gates_positions
 extended_gates_quat = [[0, 0, 0, 0]] + gates_quat # der erste Eintrag wird nicht verwendet, da kein richtiges Gate
@@ -159,17 +140,37 @@ extended_gates_quat = [[0, 0, 0, 0]] + gates_quat # der erste Eintrag wird nicht
 # gates = [start_pos, gates_positions[0], gates_positions[1]]
 
 
-X_opt, N_opt = optimize_full_trajectory(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, t_min=10, t_max=15, step=2, random_iteraitions=5)
+# X_opt, N_opt = optimize_full_trajectory_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, t_min=10, t_max=18, step=1, random_iteraitions=10)
 
 # N_list = [72, 99, 73, 106]
 # X_opt, N_opt = optimize_waypoint_positions(extended_gates, extended_gates_quat, N_list, obstacles_positions, start_vel, velocity_gate4, dt=1/50)
 
+N_opt = [60, 80, 80, 80] # 6 sec - normal
+N_opt = [63, 87, 71, 79] # 6 sec - optimized
+N_opt = [100, 133, 133, 133] # 10 sec - normal
+N_opt = [105, 145, 118, 132] # 10 sec - optimized 6 scaled
+N_opt = [100, 150, 140, 110] # 10 sec - optimized
+# N_opt = [35, 55, 45, 40] # 4 sec - optimized
+# X_opt, cost = optimize_velocity_bounded(extended_gates, extended_gates_quat, N_opt, obstacles_positions, start_vel, velocity_gate4, dt=1/50)
+X_opt, N_opt, cost = optimize_from_given_N_list_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, N_opt, iterations=10, max_shift=0.1, shorten=[], lengthen=[])
+
+
+
+
+
+
+
+
+
+
+
+
 print("N_opt:", N_opt)
 print("optimale Zeiten:", np.array(N_opt) * (1/50) )
 print("optimale Gesamtzeit:", sum(N_opt) * (1/50))
+print("optimale Kosten: ", cost)
 
 plot_waypoints_and_environment(X_opt, obstacles_positions, gates_positions, gates_quat)
-
 
 # Daten Speichern
 output_data = {
@@ -177,7 +178,7 @@ output_data = {
     "X_opt": np.array(X_opt).tolist()
 }
 output_dir = os.path.join("plot", "traj_data")
-output_path = os.path.join(output_dir, "opt_traj_0406_newbounds_1.json")
+output_path = os.path.join(output_dir, "opt__test.json")
 with open(output_path, "w") as f:
     json.dump(output_data, f, indent=2)
 print(f"✅ Optimierungsdaten gespeichert in: {output_path}")
