@@ -237,7 +237,7 @@ def create_ocp_solver(
     dll_actual = "c_generated_code/libacados_ocp_solver_lsy_example_mpc.dll"
 
     if os.path.exists(dll_actual) and not os.path.exists(dll_expected):
-        os.rename(dll_actual, dll_expected)
+        # os.rename(dll_actual, dll_expected)
         print(f"🛠️ DLL umbenannt: {dll_actual} ➝ {dll_expected}")
 
 
