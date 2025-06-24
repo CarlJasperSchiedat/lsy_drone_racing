@@ -74,9 +74,13 @@ def export_quadrotor_ode_model() -> AcadosModel:
     p_obs2 = MX.sym("p_obs2", 2)
     p_obs3 = MX.sym("p_obs3", 2)
     p_obs4 = MX.sym("p_obs4", 2)
-    p_ref = MX.sym("p_ref", 3)
+    p_ref = MX.sym("p_ref", 3)#
+
+    # Update the Mass of the Drone online -> bzw. only the corresponding parameter of the model
+    params_acc_0 = MX.sym("params_acc_0")
+
     #Define params necessary for external cost function
-    params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref)
+    params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, params_acc_0)
 
 
 
@@ -99,7 +103,8 @@ def export_quadrotor_ode_model() -> AcadosModel:
         * (cos(roll) * sin(pitch) * cos(yaw) + sin(roll) * sin(yaw)),
         (params_acc[0] * f_collective + params_acc[1])
         * (cos(roll) * sin(pitch) * sin(yaw) - sin(roll) * cos(yaw)),
-        (params_acc[0] * f_collective + params_acc[1]) * cos(roll) * cos(pitch) - GRAVITY,  # params_acc[0] ≈ k_thrust / m_nominal
+        (params_acc_0 * f_collective + params_acc[1]) * cos(roll) * cos(pitch) - GRAVITY,
+        # (params_acc[0] * f_collective + params_acc[1]) * cos(roll) * cos(pitch) - GRAVITY,  # params_acc[0] ≈ k_thrust / m_nominal
         params_roll_rate[0] * roll + params_roll_rate[1] * r_cmd,
         params_pitch_rate[0] * pitch + params_pitch_rate[1] * p_cmd,
         params_yaw_rate[0] * yaw + params_yaw_rate[1] * y_cmd,
@@ -337,6 +342,10 @@ class MPController(Controller):
         self.config = config
         self.finished = False
 
+        # Estimation-variable of the OCP variable corresponding to Mass
+        self.params_acc_0_hat = 20.907574256269616 # params_acc[0] ≈ k_thrust / m_nominal ; nominal value given for nominal_mass = 0.027
+        self.vz_prev = 0.0 # estimated velocity at start = 0
+
 
 
 
@@ -356,20 +365,13 @@ class MPController(Controller):
             The collective thrust and orientation [t_des, r_des, p_des, y_des] as a numpy array.
         """
         
+        # Update Mass-Estimation of Drone , bzw. update self.params_acc_0_hat
+        self.mass_estimator(obs)
 
 
 
-        '''
-        update = self.check_for_update(obs)
-        if update:
-            if update ==2:
-                print('Changes were detected, now we can update traj at:',self._tick)
 
-                self.update_traj(obs)
-            else:
-                print('Changes were detected, obstacle:',self._tick)
-                print("update prev_obstacle welche benutzte werden für NB", "\n")
-        '''
+        # Update Gates ?
         updated_gate = self.check_for_update_2(obs)
 
         if updated_gate:
@@ -405,17 +407,13 @@ class MPController(Controller):
         for j in range(self.N):
 
 
-            yref = np.array(
-                [self.prev_obstacle[0,0],self.prev_obstacle[0,1],
-                self.prev_obstacle[1,0],self.prev_obstacle[1,1],
-                self.prev_obstacle[2,0],self.prev_obstacle[2,1],
-                self.prev_obstacle[3,0],self.prev_obstacle[3,1],
-                    self.x_des[i + j],
-                    self.y_des[i + j],
-                    self.z_des[i + j],
-                   
-                ]
-            )
+            yref = np.hstack([ # params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, m)
+                self.prev_obstacle[:, :2].flatten(),
+                self.x_des[i + j],
+                self.y_des[i + j],
+                self.z_des[i + j],
+                self.params_acc_0_hat,
+                ])
 
             self.acados_ocp_solver.set(j, "p", yref)
             self.y.append(yref)
@@ -427,6 +425,7 @@ class MPController(Controller):
             self.x_des[i + self.N],
             self.y_des[i + self.N],
             self.z_des[i + self.N],
+            self.params_acc_0_hat,
         ])
         self.acados_ocp_solver.set(self.N, "p", yref_N)
 
@@ -507,7 +506,7 @@ class MPController(Controller):
             - `None` if no gate moved beyond threshold
             - The **index (int)** of the first changed gate (row-wise comparison)
         """
-        threshold = 0.05
+        threshold = 0.01
 
 
         gate_index_return = None
@@ -605,6 +604,44 @@ class MPController(Controller):
         self.z_des[tick_min:tick_max + 1]  = z_new
 
         print(f"✅ Neue Teiltrajektorie (Spline) um Gate {gate_idx} aktualisiert.")
+
+
+
+    def mass_estimator(self, obs):
+
+        max_angle = max_angle=np.deg2rad(20)
+
+
+        params_acc = [20.907574256269616, 3.653687545690674] # params_acc[0] ≈ k_thrust / m_nominal
+        nominal_m = 0.027
+        GRAVITY = 9.806
+
+
+        # Messgrößen
+        vz_dot   = (obs["vel"][2] - self.vz_prev) / self.dt
+        self.vz_prev = obs["vel"][2] # update für nächsten Durchlauf
+
+        roll, pitch, _ = R.from_quat(obs["quat"]).as_euler("xyz", degrees=False)
+        cos_roll_pitch   = np.cos(roll) * np.cos(pitch)
+        
+        # Only update, whne Drone is upright
+        if abs(roll) > max_angle or abs(pitch) > max_angle or cos_roll_pitch < 0.3:
+            return # self.m_hat
+
+
+        denominator = self.last_f_collective * cos_roll_pitch + 1e-6             # Schutz vor 0
+
+        params_acc_0   = (vz_dot + GRAVITY) / denominator - params_acc[1]/denominator
+        if params_acc_0 <= 0:                         # safety against numerial errors
+            return # self.m_hat
+
+        alpha    = 0.02                                     # Glättung
+        self.params_acc_0_hat = (1 - alpha) * self.params_acc_0_hat + alpha * params_acc_0
+        # self.m_hat = k_thrust / self.k_hat                  # neue Massen-Schätzung -> nicht nötig
+
+        
+
+
 
 
 
