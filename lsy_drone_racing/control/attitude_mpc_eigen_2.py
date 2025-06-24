@@ -45,7 +45,7 @@ def export_quadrotor_ode_model() -> AcadosModel:
     params_pitch_rate = [-6.003842038081178, 6.213752925707588]
     params_roll_rate = [-3.960889336015948, 4.078293254657104]
     params_yaw_rate = [-0.005347588299390372, 0.0]
-    params_acc = [20.907574256269616, 3.653687545690674]
+    params_acc = [20.907574256269616, 3.653687545690674] # params_acc[0] ≈ k_thrust / m_nominal
 
 
 
@@ -99,7 +99,7 @@ def export_quadrotor_ode_model() -> AcadosModel:
         * (cos(roll) * sin(pitch) * cos(yaw) + sin(roll) * sin(yaw)),
         (params_acc[0] * f_collective + params_acc[1])
         * (cos(roll) * sin(pitch) * sin(yaw) - sin(roll) * cos(yaw)),
-        (params_acc[0] * f_collective + params_acc[1]) * cos(roll) * cos(pitch) - GRAVITY,
+        (params_acc[0] * f_collective + params_acc[1]) * cos(roll) * cos(pitch) - GRAVITY,  # params_acc[0] ≈ k_thrust / m_nominal
         params_roll_rate[0] * roll + params_roll_rate[1] * r_cmd,
         params_pitch_rate[0] * pitch + params_pitch_rate[1] * p_cmd,
         params_yaw_rate[0] * yaw + params_yaw_rate[1] * y_cmd,
@@ -125,11 +125,11 @@ def export_quadrotor_ode_model() -> AcadosModel:
     
     # # # #  Werte für 9 Sekunden optimiert # # # # # #
     # Penalize aggressive commands (smoother control)
-    Q_control = 0.01
+    Q_control = 0.05 #0.01
     control_penalty = df_cmd**2 + dr_cmd**2 + dp_cmd**2 + dy_cmd**2
 
     # Penalize large angles (prevents flips)
-    Q_angle = 0.01
+    Q_angle = 0.05 #0.01
     angle_penalty = roll**2 + pitch**2  # Yaw penalty optional
 
     sharpness=8
@@ -139,12 +139,12 @@ def export_quadrotor_ode_model() -> AcadosModel:
     d3 = (px - p_obs3[0])**sharpness + (py - p_obs3[1])**sharpness
     d4 = (px - p_obs4[0])**sharpness + (py - p_obs4[1])**sharpness
     safety_margin = 0.000002 # Min allowed distance squared
-    Q_obs=2 
+    Q_obs = 0 #2
     obs_cost = (0.25*np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
            np.exp(-d3/safety_margin) + 0.5*np.exp(-d4/safety_margin))
 
     #Penalising deviation from Reference trajectory #1
-    Q_pos = 10.0  
+    Q_pos = 10
     pos_error = (px - p_ref[0])**2 + (py - p_ref[1])**2 + (pz - p_ref[2])**2
 
 
@@ -155,7 +155,7 @@ def export_quadrotor_ode_model() -> AcadosModel:
         Q_obs*obs_cost)
 
     model.cost_expr_ext_cost = total_cost
-    model.cost_expr_ext_cost_e = Q_pos * pos_error 
+    model.cost_expr_ext_cost_e = Q_pos * 0.01 * pos_error 
 
 
     return model
@@ -271,9 +271,9 @@ class MPController(Controller):
         self.y_mpc=[]
 
 
-        self.prev_obstacle = [ [1, 0, 1.4], [0.5, -1, 1.4], [0, 1.5, 1.4], [-0.5, 0.5, 1.4], ]
-        self.prev_gates_quat = [ [0.0, 0.0, 0.92268986, 0.38554308], [0.0, 0.0, -0.38018841, 0.92490906], [0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], ]
-        self.prev_gates=[ [0.45, -0.5, 0.56], [1.1, -1.05, 1.11], [0.0, 1.0, 0.56], [-0.5, 0.0, 1.11], ]
+        self.prev_obstacle = np.array([ [1, 0, 1.4], [0.5, -1, 1.4], [0, 1.5, 1.4], [-0.5, 0.5, 1.4], ])
+        self.prev_gates_quat = np.array([ [0.0, 0.0, 0.92268986, 0.38554308], [0.0, 0.0, -0.38018841, 0.92490906], [0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], ])
+        self.prev_gates= np.array([ [0.45, -0.5, 0.56], [1.1, -1.05, 1.11], [0.0, 1.0, 0.56], [-0.5, 0.0, 1.11], ])
 
 
 
@@ -359,6 +359,7 @@ class MPController(Controller):
 
 
 
+        '''
         update = self.check_for_update(obs)
         if update:
             if update ==2:
@@ -368,8 +369,12 @@ class MPController(Controller):
             else:
                 print('Changes were detected, obstacle:',self._tick)
                 print("update prev_obstacle welche benutzte werden für NB", "\n")
-                
-        
+        '''
+        updated_gate = self.check_for_update_2(obs)
+
+        if updated_gate:
+            self.update_traj(updated_gate)
+
 
 
 
@@ -496,8 +501,41 @@ class MPController(Controller):
 
 
 
+    def check_for_update_2(self, obs):
+        """Check if any gate's position has changed significantly.
+        Returns:
+            - `None` if no gate moved beyond threshold
+            - The **index (int)** of the first changed gate (row-wise comparison)
+        """
+        threshold = 0.05
+
+
+        gate_index_return = None
+
+        current_gates = np.asarray(obs["gates_pos"])
+        
+        for gate_idx in range(len(self.prev_gates)):
+            prev_gate = np.asarray(self.prev_gates[gate_idx])
+            current_gate = np.asarray(current_gates[gate_idx])
+            
+            if np.linalg.norm(prev_gate - current_gate) > threshold:
+                print(f"Gate {gate_idx} moved significantly.")
+                gate_index_return = gate_idx +1
+                
+            # update changed variables either way - even if no update is nessesary -> no secound check
+            self.prev_gates = current_gates.copy()
+            self.prev_gates_quat = np.asarray(obs["gates_quat"]).copy()
+
+            for i, idx in self.gate_map.items(): # update the waypoints that correspond to a specific gate
+                self.waypoints[idx] = self.prev_gates[i]
+
+        return gate_index_return
+
+
+
+
     
-    def update_traj(self, obs):
+    def update_traj(self, updated_gate):
         """
         Set the cubic splines new from the current position
         """
@@ -507,10 +545,7 @@ class MPController(Controller):
             return
         
 
-        for i, idx in self.gate_map.items(): # update the waypoints that correspond to a specific gate
-            self.waypoints[idx] = self.prev_gates[i]
-
-        gate_idx = obs["target_gate"]
+        gate_idx = updated_gate-1
         center_idx = self.gate_map[int(gate_idx)]
 
         # 1. Neue Sub-Waypoints auswählen
