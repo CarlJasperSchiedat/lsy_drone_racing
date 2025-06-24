@@ -506,7 +506,7 @@ class MPController(Controller):
             - `None` if no gate moved beyond threshold
             - The **index (int)** of the first changed gate (row-wise comparison)
         """
-        threshold = 0.01
+        threshold = 0.1
 
 
         gate_index_return = None
@@ -521,12 +521,12 @@ class MPController(Controller):
                 print(f"Gate {gate_idx} moved significantly.")
                 gate_index_return = gate_idx +1
                 
-            # update changed variables either way - even if no update is nessesary -> no secound check
-            self.prev_gates = current_gates.copy()
-            self.prev_gates_quat = np.asarray(obs["gates_quat"]).copy()
+        # update changed variables either way - even if no update is nessesary -> no secound check
+        self.prev_gates = current_gates.copy()
+        self.prev_gates_quat = np.asarray(obs["gates_quat"]).copy()
 
-            for i, idx in self.gate_map.items(): # update the waypoints that correspond to a specific gate
-                self.waypoints[idx] = self.prev_gates[i]
+        for i, idx in self.gate_map.items(): # update the waypoints that correspond to a specific gate
+            self.waypoints[idx] = self.prev_gates[i]
 
         return gate_index_return
 
@@ -564,12 +564,6 @@ class MPController(Controller):
         dt_segments = np.diff(tick_section)
         
 
-        print("rel_indices:      ", rel_indices)
-        print("abs_indices:      ", abs_indices)
-        print("tick_section:     ", tick_section)
-        print("tick_times:       ", tick_times)
-        print("dt_segments:      ", dt_segments)
-
 
         ts = []
         for i in range(len(dt_segments)):
@@ -597,7 +591,6 @@ class MPController(Controller):
         # --- 4. Aktuelle Trajektorie ersetzen
         tick_min = tick_section[0]
         tick_max = tick_section[-1]
-        print(f"🔁 Ersetze Trajektorie von Tick {tick_min} bis {tick_max} ({tick_max - tick_min} Punkte)")
 
         self.x_des[tick_min:tick_max + 1]  = x_new
         self.y_des[tick_min:tick_max + 1]  = y_new
