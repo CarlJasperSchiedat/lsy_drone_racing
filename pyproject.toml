@@ -33,7 +33,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8.0.0", "pyinstrument"]
-online_submission = ["pandas", "kaggle"]
+online_submission = ["pandas", "kaggle", "acados_template"]
 gpu = ["crazyflow[gpu]"]
 deploy = ["cflib"]
 
