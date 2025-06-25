@@ -2,17 +2,13 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
-from casadi import DM
-import json
-import os
 
-# from optimal_traj_2gates import optimize_waypoint_positions
-# from optimal_trajectory import optimize_waypoint_pos_and_num
-from optimizer_help_func import optimize_full_trajectory_random, optimize_from_given_N_list_random
-from optimizer import optimize_original, optimize_velocity_bounded
+from scipy.interpolate import CubicSpline
 
 
-def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_positions, gates_quat):
+
+def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_positions, gates_quat,show_spline=True):
+
 
     def quaternion_to_rotation_matrix(q):
         x, y, z, w = q
@@ -31,9 +27,23 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
-    # Waypoints plotten
     waypoints = np.array(waypoints)
-    ax.plot(waypoints[:,0], waypoints[:,1], waypoints[:,2], 'bo-', label='Waypoints', markersize=2)
+    ax.plot(waypoints[:, 0], waypoints[:, 1], waypoints[:, 2], 'bo-', label='Waypoints', markersize=2)
+
+    # Optional: cubic spline Trajektorie
+    if show_spline:
+        ts = np.linspace(0, 1, len(waypoints))
+        cs_x = CubicSpline(ts, waypoints[:, 0])
+        cs_y = CubicSpline(ts, waypoints[:, 1])
+        cs_z = CubicSpline(ts, waypoints[:, 2])
+
+        t_fine = np.linspace(0, 1, 200)
+        spline_x = cs_x(t_fine)
+        spline_y = cs_y(t_fine)
+        spline_z = cs_z(t_fine)
+
+        ax.plot(spline_x, spline_y, spline_z, 'g-', linewidth=2, label='Cubic Spline Trajectory')
+
 
     # Gates als rotierte Quadrate
     gate_size = 0.45 / 2
@@ -56,59 +66,72 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
         poly = Poly3DCollection([inner_square], color=gate_color, label='Gate' if i == 0 else "")
         ax.add_collection3d(poly)
 
-        outer_square = np.array([
-            [-gate_size_outer, 0, -gate_size_outer],
-            [ gate_size_outer, 0, -gate_size_outer],
-            [ gate_size_outer, 0,  gate_size_outer],
-            [-gate_size_outer, 0,  gate_size_outer],
-        ])
-        outer_transformed = rotate_and_translate(outer_square, R, gate)
-        poly_outer = Poly3DCollection([outer_transformed], color=gate_color)
-        ax.add_collection3d(poly_outer)
+    ax.scatter(gates_positions[:, 0], gates_positions[:, 1], gates_positions[:, 2], c='r', s=50, label=None)
 
-    # Gate-Zentren markieren
-    ax.scatter(gates_positions[:,0], gates_positions[:,1], gates_positions[:,2], c='r', s=50, label=None)
-
-    # Stäbe plotten (von z=0 bis z=1)
+    # Staves
     for idx, point in enumerate(obstacle_positions):
         ax.plot([point[0], point[0]], [point[1], point[1]], [0, 1],
                 linewidth=4, label='Staves' if idx == 0 else "")
 
-    # Achsenbeschriftung und Limits
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
-    ax.set_xlim(-1.5, 1.5)
-    ax.set_ylim(-2, 2)
-    ax.set_zlim(0, 2)
+
+    # Set axis limits to nearest multiples of 0.15 that cover the data
+    def get_grid_limits(data, step=0.15):
+        dmin = np.min(data)
+        dmax = np.max(data)
+        lower = step * np.floor(dmin / step)
+        upper = step * np.ceil(dmax / step)
+        return lower, upper
+
+    xlim = get_grid_limits(np.concatenate([waypoints[:,0], np.array(gates_positions)[:,0], np.array(obstacle_positions)[:,0]]))
+    ylim = get_grid_limits(np.concatenate([waypoints[:,1], np.array(gates_positions)[:,1], np.array(obstacle_positions)[:,1]]))
+    zlim = get_grid_limits(np.concatenate([waypoints[:,2], np.array(gates_positions)[:,2], np.array(obstacle_positions)[:,2]]))
+
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_zlim(zlim)
+
+    # Set grid lines every 0.15
+    ax.set_xticks(np.arange(xlim[0], xlim[1]+0.001, 0.15))
+    ax.set_yticks(np.arange(ylim[0], ylim[1]+0.001, 0.15))
+    ax.set_zticks(np.arange(zlim[0], zlim[1]+0.001, 0.15))
 
     ax.legend()
-    ax.set_title('3D Waypoints mit Stäben und rotierbaren Gates')
+    ax.set_title('3D Waypoints mit Stäben, rotierbaren Gates' +
+                 (' und Spline-Trajektorie' if show_spline else ''))
     plt.show()
 
 
-
-
 waypoints = np.array(
-    [
-        [1.0, 1.5, 0.05],
-        [0.8, 1.0, 0.2],
-        [0.55, -0.3, 0.5], # gate 0
-        [0.1, -1.5, 0.65],
-        [1.1, -0.85, 1.15], # gate 1
-        [0.2, 0.5, 0.65],
-        [0.0, 1.2, 0.525], # gate 2
-        [0.0, 1.2, 1.1],
-        [-0.5, 0.0, 1.1], # gate 3
-        [-0.5, -0.5, 1.1],
-        [-0.5, -1.0, 1.1],
-    ]
-)
+            [
+            [1.0, 1.5, 0.2],
+            [0.625, 0.25, 0.38],
+            [0.45, -0.5, 0.56],
+            [0.425, -0.57, 0.56],
+            [0.325, -0.9, 0.605],
+            [0.2, -1.3, 0.65],
+            [0.6, -1.375, 0.78],
+            [0.8, -1.375, 0.88],
+            [1.0, -1.05, 1.11], # [1.0, -1.05, 1.11],
+            [1.1, -0.8, 1.11],
+            [0.7, -0.275, 0.88],
+            [0.2, 0.5, 0.65],
+            [0.0, 1.0, 0.56],
+            [0.0, 1.05, 0.56],
+            [0.0, 0.9, 0.63],
+            [-0.1, 0.7, 0.75],
+            [-0.25, 0.3, 0.95],
+            #[-0.5, 0.0, 1.1],
+            [-0.42, -0.4, 1.11],
+            ])
+
 
 obstacles_positions = [
-    [1.0, 0.0, 1.4],
+    [1, -0.0, 1.4],
     [0.5, -1.0, 1.4],
-    [0., 1.5, 1.4],
+    [0.0, 1.5, 1.4],
     [-0.5, 0.5, 1.4],
 ]
 
@@ -127,75 +150,5 @@ gates_quat = [   # sind als rpy gegeben und nicht als Quaternion ??????? -> z.B.
 ]
 
 
-
 plot_waypoints_and_environment(waypoints, obstacles_positions, gates_positions, gates_quat)
 
-
-'''
-gate_1 = DM(gates_positions[0] + gates_quat[0])  # [x, y, z, qx, qy, qz, qw]
-gate_2 = DM(gates_positions[1] + gates_quat[1])  # [x, y, z, qx, qy, qz, qw]
-
-X_opt, N_opt = optimize_waypoint_pos_and_num(gate_1, gate_2, obstacles_positions, 1.5, 2.5, step=10)
-
-print("N_opt:", N_opt)
-print("optimale Zeit:", N_opt * 1/50)
-
-plot_waypoints_and_environment(X_opt, obstacles_positions, gates_positions, gates_quat)
-'''
-
-
-
-
-start_vel = [0, 0, 0.1]
-velocity_gate4 = [0, -2, 0] # wird nicht verwendet - velocity in gate richtung wird betrachtet in UGB
-
-start_pos = [1.0, 1.5, 0.0]
-
-extended_gates = [start_pos] + gates_positions
-extended_gates_quat = [[0, 0, 0, 0]] + gates_quat # der erste Eintrag wird nicht verwendet, da kein richtiges Gate
-
-# gates = [start_pos, gates_positions[0], gates_positions[1]]
-
-
-# X_opt, N_opt = optimize_full_trajectory_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, t_min=10, t_max=18, step=1, random_iteraitions=10)
-
-# N_list = [72, 99, 73, 106]
-# X_opt, N_opt = optimize_waypoint_positions(extended_gates, extended_gates_quat, N_list, obstacles_positions, start_vel, velocity_gate4, dt=1/50)
-
-N_opt = [60, 80, 80, 80] # 6 sec - normal
-N_opt = [63, 87, 71, 79] # 6 sec - optimized
-N_opt = [100, 133, 133, 133] # 10 sec - normal
-N_opt = [105, 145, 118, 132] # 10 sec - optimized 6 scaled
-N_opt = [100, 150, 140, 110] # 10 sec - optimized
-# N_opt = [35, 55, 45, 40] # 4 sec - optimized
-# X_opt, cost = optimize_velocity_bounded(extended_gates, extended_gates_quat, N_opt, obstacles_positions, start_vel, velocity_gate4, dt=1/50)
-X_opt, N_opt, cost = optimize_from_given_N_list_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, N_opt, iterations=10, max_shift=0.1, shorten=[], lengthen=[])
-
-
-
-
-
-
-
-
-
-
-
-
-print("N_opt:", N_opt)
-print("optimale Zeiten:", np.array(N_opt) * (1/50) )
-print("optimale Gesamtzeit:", sum(N_opt) * (1/50))
-print("optimale Kosten: ", cost)
-
-plot_waypoints_and_environment(X_opt, obstacles_positions, gates_positions, gates_quat)
-
-# Daten Speichern
-output_data = {
-    "N_opt": N_opt,
-    "X_opt": np.array(X_opt).tolist()
-}
-output_dir = os.path.join("plot", "traj_data")
-output_path = os.path.join(output_dir, "opt__test.json")
-with open(output_path, "w") as f:
-    json.dump(output_data, f, indent=2)
-print(f"✅ Optimierungsdaten gespeichert in: {output_path}")
