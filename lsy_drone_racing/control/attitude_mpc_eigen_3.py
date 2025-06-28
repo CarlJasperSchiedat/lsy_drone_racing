@@ -24,11 +24,17 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
+
 import os
 import platform
 def rename_acados_dll(name: str):
-
+    # Workaround für acados auf Windows – sorgt dafür, dass Kompilierung klappt
     """Rename the acados DLL on Windows if needed."""
+
+    os.environ["CC"] = "gcc"
+    os.environ["LD"] = "gcc"
+    os.environ["RM"] = "del"
+
     if platform.system().lower() != "windows":
         return  # Nur unter Windows notwendig
 
@@ -56,7 +62,7 @@ def rename_acados_dll(name: str):
 def export_quadrotor_ode_model() -> AcadosModel:
     """Symbolic Quadrotor Model."""
     # Define name of solver to be used in script
-    model_name = "lsy_example_mpc_ext"
+    model_name = "lsy_example_mpc"
 
     # Define Gravitational Acceleration
     GRAVITY = 9.806
@@ -251,12 +257,12 @@ def create_ocp_solver(
 
 
 
-    rename_acados_dll("lsy_example_mpc_ext")
+    rename_acados_dll("lsy_example_mpc")
 
 
 
 
-    acados_ocp_solver = AcadosOcpSolver(ocp, json_file="lsy_example_mpc_ext.json", verbose=verbose)
+    acados_ocp_solver = AcadosOcpSolver(ocp, json_file="lsy_example_mpc.json", verbose=verbose)
 
     return acados_ocp_solver, ocp
 
@@ -395,8 +401,12 @@ class MPController(Controller):
         Returns:
             The collective thrust and orientation [t_des, r_des, p_des, y_des] as a numpy array.
         """
+
         self.mass_estimator(obs)
 
+        
+        
+        
         # Update Gates ?
         updated_gate = self.check_for_update_2(obs)
         if updated_gate:

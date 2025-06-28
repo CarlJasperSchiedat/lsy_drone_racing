@@ -33,6 +33,8 @@ os.environ["RM"] = "del"
 
 
 
+
+
 def export_quadrotor_ode_model() -> AcadosModel:
     """Symbolic Quadrotor Model."""
     # Define name of solver to be used in script
