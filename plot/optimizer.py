@@ -227,13 +227,15 @@ def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1
             # Velocity rewarden 
             v_drone = X[idx][3:6]
             gate_dir = DM(R.from_quat(gates_quat[gate_idx]).apply([0, 1, 0]))
-            cost -= 3 * dot(v_drone, gate_dir)
+            cost -= 2.5 * dot(v_drone, gate_dir)
             
 
             
 
 
         gate_idx += 1
+
+
 
 
 
@@ -256,7 +258,7 @@ def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1
     # Velocity rewarden
     v_drone = X[total_N][3:6]
     gate_dir = DM(R.from_quat(gates_quat[-1]).apply([0, 1, 0]))
-    cost -= 0.5 * dot(v_drone, gate_dir)
+    cost -= 2.5 * dot(v_drone, gate_dir)
 
 
     # Letztes X anhängen
@@ -341,7 +343,7 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
 
 
     min_force = 0.1
-    max_force = 0.8
+    max_force = 1
 
     # Bounds for inputs
     input_lower_bound = [-5, -5, -5, -5]
@@ -402,7 +404,7 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
             v_sq = sumsqr(xi[3:6])
             g   += [v_sq]
             lbg += [0]
-            v_max = 0.8
+            v_max = 1.5
             ubg += [v_max**2]
 
 
@@ -422,11 +424,12 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
                 for idx_obs, obs in enumerate(obstacles):
                     dist = sumsqr(xi[0:2] - obs[0:2])
 
-                    multiplikator = 1
-                    falloff = 0.5
-                    faktor = 25
+                    multiplikator = 10.0
+                    falloff = 2.5
+                    faktor = 200
                     exponent = 2
-                    cost += multiplikator * exp(-((dist / falloff)*exponent) * faktor)
+                    cost += multiplikator * exp(- faktor * ((dist / falloff)*exponent) )
+
 
 
 
@@ -436,27 +439,33 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
                 if 0 < gate_ref_idx < len(gates): # ignoriere Startposition - 1. Gate ist Startposition
                     gate_pos = np.array(gates[gate_ref_idx])
                     gate_quat = np.asarray(gates_quat[gate_ref_idx], dtype=float)
-                    # gate_rot = R.from_quat(gate_quat)
                     gate_rot = R.from_quat(gate_quat).as_matrix()
 
 
-                    target_dist = 0.225 + 0.05/2    # Mitte von Rahmen: Innenkante=0.225m und Rahmendicke=0.05m
-                    y_range = 0.1                   # Toleranzbereich in y-Richtung
+                    target_dist = 0.225 + 0.1/2    # Mitte von Rahmen: Innenkante=0.225m und Rahmendicke=0.1m
 
-                    falloff = 0.5
-                    faktor = 500
-                    exponent = 6
-                    multiplikator = 1
+                    falloff_xz = 2.0
+                    faktor_xz = 150
+                    exponent_xz = 2
+
+                    falloff_y = 2.0
+                    faktor_y = 150
+                    exponent_y = 2
+
 
                     rel_pos = gate_rot.T @ (xi[0:3] - gate_pos)
-                    penalty_dist = fmin(fabs(fabs(rel_pos[0]) - target_dist), fabs(fabs(rel_pos[2]) - target_dist))
-                    if_condition = fabs(rel_pos[1]) < y_range
-                    cost += if_condition * (multiplikator * exp(-((penalty_dist / falloff)**exponent) * faktor))
+
+                    penalty_dist = fmax( fabs(fabs(rel_pos[0]) - target_dist), fabs(fabs(rel_pos[2]) - target_dist) )
+                    xz_penalty = exp(- faktor_xz * ((penalty_dist / falloff_xz)**exponent_xz) )
+                    y_falloff = exp(- faktor_y * ((penalty_dist / falloff_y)**exponent_y) )
+                    
+                    cost += y_falloff * xz_penalty
 
 
 
             idx += 1
-        
+
+
 
 
         # Zwischen-Gates
@@ -472,12 +481,13 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
             # Velocity rewarden
             v_drone = X[idx][3:6]
             gate_dir = DM(R.from_quat(gates_quat[gate_idx]).apply([0, 1, 0]))
-            cost -= 3 * dot(v_drone, gate_dir)
+            cost -= 4.0 * dot(v_drone, gate_dir)
             # '''
 
 
 
         gate_idx += 1
+
 
 
 
@@ -497,7 +507,7 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
     # Velocity rewarden
     v_drone = X[total_N][3:6]
     gate_dir = DM(R.from_quat(gates_quat[-1]).apply([0, 1, 0]))
-    cost -= 0.5 * dot(v_drone, gate_dir)
+    cost -= 4.0 * dot(v_drone, gate_dir)
     # '''
 
     # Letztes X anhängen
@@ -523,7 +533,7 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
         "ipopt.print_level": 0,
         "print_time": 0,
         "verbose": False,
-        "ipopt.max_cpu_time": 20.0,  # Zeitlimit in Sekunden
+        "ipopt.max_cpu_time": 40.0,  # Zeitlimit in Sekunden
     })
     sol = solver(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg)
     if solver.stats()["success"]:
@@ -546,3 +556,6 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
         X_opt.append(x_i)
 
     return np.array(X_opt), float(sol["f"])
+
+
+

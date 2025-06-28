@@ -50,9 +50,9 @@ class MPController(Controller):
         self.y_mpc=[]
 
 
-        self.prev_obstacle = [ [1, 0, 1.4], [0.5, -1, 1.4], [0, 1.5, 1.4], [-0.5, 0.5, 1.4], ]
-        self.prev_gates_quat = [ [0.0, 0.0, 0.92268986, 0.38554308], [0.0, 0.0, -0.38018841, 0.92490906], [0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], ]
-        self.prev_gates=[ [0.45, -0.5, 0.56], [1.1, -1.05, 1.11], [0.0, 1.0, 0.56], [-0.5, 0.0, 1.11], ]
+        self.prev_obstacle = np.array([ [1, 0, 1.4], [0.5, -1, 1.4], [0, 1.5, 1.4], [-0.5, 0.5, 1.4], ])
+        self.prev_gates_quat = np.array([ [0.0, 0.0, 0.92268986, 0.38554308], [0.0, 0.0, -0.38018841, 0.92490906], [0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], ])
+        self.prev_gates= np.array([ [0.45, -0.5, 0.56], [1.1, -1.05, 1.11], [0.0, 1.0, 0.56], [-0.5, 0.0, 1.11], ])
 
 
 
@@ -93,14 +93,26 @@ class MPController(Controller):
 
 
 
-        self.N = 30
-        self.T_HORIZON = 1.5
-        self.dt = self.T_HORIZON / self.N
-        self.acados_ocp_solver, self.ocp = create_ocp_solver_for_mpc(self.T_HORIZON, self.N, name="example_mpc")
+        # # For Visualising
+        tvisual = np.linspace(0, tick_times[-1], 50)
+        x = cs_x(tvisual)
+        y = cs_y(tvisual)
+        z = cs_z(tvisual)
+        self.traj_vis=np.array([x,y,z])
+        self.update_traj_vis=np.array([x,y,z])
 
+
+
+        # acados solver for MPC
+        self.N_mpc = 20
+        self.T_HORIZON_mpc = 1
+        self.dt_mpc = self.T_HORIZON_mpc / self.N_mpc
+        self.acados_ocp_solver, self.ocp = create_ocp_solver_for_mpc(self.T_HORIZON_mpc, self.N_mpc, name="example_mpc")
+
+        # acados solver for the Recompute
         self.N_recompute = 60
         self.acados_recompute_solver, self.ocp_recompute = create_ocp_solver_for_recompute(
-            self.N_recompute * self.dt, self.N_recompute, name="recompute_ocp",
+            self.N_recompute / self.freq, self.N_recompute, name="recompute_ocp",
             verbose = False)
 
         self.last_f_collective = 0.3
@@ -111,9 +123,9 @@ class MPController(Controller):
 
 
 
-
-        self.traj_update_log = []  # Hier werden alle Trajektorie-Vergleiche gespeichert
-        self.traj_update_counter = 0
+        # Estimation-variable of the OCP variable corresponding to Mass
+        self.params_acc_0_hat = 20.907574256269616 # params_acc[0] ≈ k_thrust / m_nominal ; nominal value given for nominal_mass = 0.027
+        self.vz_prev = 0.0 # estimated velocity at start = 0
 
 
 
@@ -135,26 +147,18 @@ class MPController(Controller):
             The collective thrust and orientation [t_des, r_des, p_des, y_des] as a numpy array.
         """
         
+        # Update Mass-Estimation of Drone , bzw. update self.params_acc_0_hat
+        self.mass_estimator(obs)
 
 
 
-        update = self.check_for_update(obs)
-        if update:
-            if update ==2:
-                print('Changes were detected, now we can update traj at:',self._tick)
-                ticks_per_segment = int(self.freq * self.des_completion_time) // (len(self.waypoints) - 1)
-                current_waypoint_idx = int( (self._tick-np.mod(self._tick,ticks_per_segment))  / ticks_per_segment )
-                print('The current waypoint ist:', (self._tick-np.mod(self._tick,ticks_per_segment))  / ticks_per_segment  )
-                print("ticks per segment:", ticks_per_segment, "\n")
 
-                self.update_traj(obs, current_waypoint_idx)
-            else:
-                print('Changes were detected, obstacle:',self._tick)
-                print("update prev_obstacle welche benutzte werden für NB", "\n")
+        # Update Gates ?
+        updated_gate = self.check_for_update(obs)
+        if updated_gate:
+            self.update_traj(obs, updated_gate)
                 
         
-
-
 
 
         i = min(self._tick, len(self.x_des) - 1)
@@ -162,6 +166,7 @@ class MPController(Controller):
             self.finished = True
 
   
+
 
         q = obs["quat"]
         r = R.from_quat(q)
@@ -181,54 +186,32 @@ class MPController(Controller):
         self.acados_ocp_solver.set(0, "ubx", xcurrent)
 
         self.y=[]
-        for j in range(self.N):
-            yref = np.array(
-                [
-                    self.x_des[i + j],
-                    self.y_des[i + j],
-                    self.z_des[i + j],
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.35,
-                    0.35,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
-            )
-            self.acados_ocp_solver.set(j, "yref", yref)  
-            self.y.append(yref)
-        yref_N = np.array(
-            [
-                self.x_des[i + self.N],
-                self.y_des[i + self.N],
-                self.z_des[i + self.N],
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.35,
-                0.35,
-                0.0,
-                0.0,
-                0.0,
-            ]
-        )
-        self.acados_ocp_solver.set(self.N, "yref", yref_N)
+        for j in range(self.N_mpc):
 
+
+            yref = np.hstack([ # params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, m)
+                self.prev_obstacle[:, :2].flatten(),
+                self.x_des[i + j],
+                self.y_des[i + j],
+                self.z_des[i + j],
+                self.params_acc_0_hat,
+                ])
+
+            self.acados_ocp_solver.set(j, "p", yref)
+            self.y.append(yref)
+
+        yref_N = np.hstack([
+            self.prev_obstacle[:, :2].flatten(),
+            self.x_des[i + self.N_mpc],
+            self.y_des[i + self.N_mpc],
+            self.z_des[i + self.N_mpc],
+            self.params_acc_0_hat,
+        ])
+        self.acados_ocp_solver.set(self.N_mpc, "p", yref_N)
+        
         self.acados_ocp_solver.solve()
         self.y_mpc = []
-        for j in range(self.N + 1):  # Include terminal state
+        for j in range(self.N_mpc + 1):  # Include terminal state
             x_pred = self.acados_ocp_solver.get(j, "x")
             # Extract relevant states to match your y_ref format if needed
             # This depends on how you want to compare them
@@ -236,7 +219,7 @@ class MPController(Controller):
             self.y_mpc.append(y_mpc)
 
         x1 = self.acados_ocp_solver.get(1, "x")
-        w = 1 / self.config.env.freq / self.dt
+        w = 1 / self.freq / self.dt_mpc
         self.last_f_collective = self.last_f_collective * (1 - w) + x1[9] * w
         self.last_f_cmd = x1[10]
         self.last_rpy_cmd = x1[11:14]
@@ -244,9 +227,8 @@ class MPController(Controller):
         cmd = x1[10:14]
 
 
-        
-
         return cmd
+
 
 
 
@@ -270,136 +252,257 @@ class MPController(Controller):
 
 
 
-    def check_for_update(self,obs):
-        """
-        return: flag:
-        0 = keine update
-        1 = update obstale
-        2 = update gate
-        """
-        flag=0
-        if not np.array_equal(self.prev_obstacle,obs["obstacles_pos"]):
-            print('Obstacle has changed:')  
-            print(obs["obstacles_pos"])
-            self.prev_obstacle=obs["obstacles_pos"]
-            flag=1
-        if not np.array_equal(self.prev_gates_quat,obs["gates_quat"]):
-            # print('Gate_rotation has changed:')
-            # print(obs['gates_quat'])
-            self.prev_gates_quat=obs["gates_quat"]
-            flag=2
-        if not np.array_equal(self.prev_gates,obs["gates_pos"]):
-            # print('Gate_position has changed:')
-            # print(obs['gates_pos'])
-            self.prev_gates=obs["gates_pos"]
-            flag=2
 
-        return flag
+    def check_for_update(self, obs):
+        """Check if any gate's position has changed significantly.
+        Returns:
+            - `None` if no gate moved beyond threshold
+            - The **index (int)** of the first changed gate (row-wise comparison)
+        """
+        threshold = 0.1
 
-    
-    def update_traj(self, obs, waypoint_idx):
-        """
-        Set the cubic splines new from the current position
-        """
-        def quat2rpy(q):
-            """w,x,y,z -> roll,pitch,yaw (rad)"""
-            w, x, y, z = q
-            # Tait-Bryan (ZYX)-Konvention
-            roll  = np.arctan2(2*(w*x + y*z), 1 - 2*(x*x + y*y))
-            pitch = np.arcsin (2*(w*y - z*x))
-            yaw   = np.arctan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
-            return np.array([roll, pitch, yaw])
+
+        gate_index_return = None
+
+
+        current_gates = np.asarray(obs["gates_pos"])
         
-        def make_inf_bounds(nx):
-            return -1e9*np.ones(nx), 1e9*np.ones(nx)
+        for gate_idx in range(len(self.prev_gates)):
+            prev_gate = np.asarray(self.prev_gates[gate_idx])
+            current_gate = np.asarray(current_gates[gate_idx])
+            
+            if np.linalg.norm(prev_gate - current_gate) > threshold:
+                print(f"Gate {gate_idx} moved significantly.")
+                gate_index_return = gate_idx +1
+                
+        # update changed variables either way - even if no update is nessesary -> no secound check
+        self.prev_gates = current_gates.copy()
+        self.prev_gates_quat = np.asarray(obs["gates_quat"]).copy()
 
-        # update the waypoints that correspond to a specific gates
-        for i, idx in self.gate_map.items(): 
+        for i, idx in self.gate_map.items(): # update the waypoints that correspond to a specific gate
             self.waypoints[idx] = self.prev_gates[i]
 
-        solver = self.acados_recompute_solver
-        nx     = solver.acados_ocp.dims.nx
-        current_tick = self._tick
-        N_rec = self.N_recompute
+        return gate_index_return
 
-        # Erstelle eine Map für Gates welche in der Zukunft liegen - Ticks n relation zu Jetzt (current_tick)
-        gate_wp_idx   = np.fromiter(self.gate_map.values(), dtype=int)
-        gate_ticks    = np.asarray(self.ticks)[gate_wp_idx]
-        gate_ticks_rel = gate_ticks - current_tick
-        visit_gate = gate_ticks_rel > 0
-        gate_ticks_rel = gate_ticks_rel[visit_gate]
-        gate_ids       = np.fromiter(self.gate_map.keys(), dtype=int)[visit_gate]
-        gate_tick_map = dict(zip(gate_ids, gate_ticks_rel)) # map für 
-        print(gate_tick_map)
+    
 
-        ticks_np = np.asarray(self.ticks)
-        gate_tick_map = {
-            gate_id: (rel_tick := ticks_np[wp_idx] - self._tick)        # relativer Tick zu current_tick
-            for gate_id, wp_idx in self.gate_map.items()                # (gate → waypoint-idx) aus gegeben / geladener map
-            if 0 < rel_tick <= N_rec                         # nur künftige Gates welche im Horizon liegen
-        }
-        print(gate_tick_map)
+
+    def update_traj(self, obs, updated_gate):
+        """
+        optimize a section around the gate
+        """
+
+        if self._tick == 0:
+            print("Kein Update, Tick == 0")
+            return
 
 
 
 
-        # 1) Startzustand k=0 festnageln
-        x0 = np.hstack([np.asarray(obs["pos"]), np.asarray(obs["vel"]), quat2rpy(obs["quat"]),
-                        self.last_f_collective, self.last_f_cmd,
-                        self.last_rpy_cmd])
-        solver.set(0, "lbx", x0)
-        solver.set(0, "ubx", x0)
+        gate_idx = int(updated_gate-1)
+        gate_waypoint_idx = self.gate_map[int(gate_idx)]
+        gate_tick = self.ticks[gate_waypoint_idx]
 
-        # 2)  Gates auf den zugehörigen Ticks festnageln
-        for gate_id, k_gate in gate_tick_map.items():
-            gate_pos = self.prev_gates[gate_id]
+        if gate_idx == obs["target_gate"]:
+            start_tick = self._tick
+            target_gate_flag = 1
+        else:
+            start_tick = gate_tick - 20
+            target_gate_flag = 0
 
-            lbx, ubx = make_inf_bounds(nx)
-            lbx[:3] = gate_pos
-            ubx[:3] = gate_pos
+        rel_gate_tick = gate_tick - start_tick
+        gate_pos  = self.prev_gates[gate_idx]
 
-            solver.set(k_gate, "lbx", lbx)
-            solver.set(k_gate, "ubx", ubx)
-
-        # 3)  Terminal-Position (k = N) festlegen
-        terminal_idx = current_tick + N_rec
-        term_pos = [self.x_des[terminal_idx], self.y_des[terminal_idx], self.z_des[terminal_idx]]
-        solver.set("lbx_e", term_pos)
-        solver.set("ubx_e", term_pos)
-
-        # 4)  gleiche Gate-Parameter für alle Stufen
-        p_vec = np.hstack([ self.prev_gates[obs["target_gate"]], self.prev_gates_quat[obs["target_gate"]].reshape(9) ])
-        for k in range(N_rec + 1):
-            solver.set(k, "p", p_vec)
-
-        solver.solve()
-        traj = np.vstack([solver.get(k, "x") for k in range(N_rec+1)])
-        x_new, y_new, z_new = traj[:, 0], traj[:, 1], traj[:, 2]
-        
-        seg_len            = len(x_new)
-        slice_idx          = slice(current_tick, current_tick + seg_len)       # t0 … t0+N
-        self.x_des[slice_idx] = x_new
-        self.y_des[slice_idx] = y_new
-        self.z_des[slice_idx] = z_new
-
-        print(f"✅ Trajektorie-Teil ab Index {waypoint_idx} erfolgreich ersetzt.")
+        print(
+            f"\n\n\n"
+            f"[DBG] gate_idx={gate_idx:2d} \n waypoint_idx={gate_waypoint_idx:3d} \n "
+            f"start_tick={start_tick:4d} \n gate_tick={gate_tick:4d} \n "
+            f"rel_gate_tick={rel_gate_tick:3d} \n target_gate_flag={target_gate_flag}"
+            f"\n\n\n" )
 
 
 
+
+        #  -----  acados solver for Recompute  -----
+        nominal_constrain_lbx = self.ocp_recompute.constraints.lbx.copy()
+        nominal_constrain_ubx = self.ocp_recompute.constraints.ubx.copy()
+        pos_idx = np.array([0,1,2], dtype=int)
 
         
-    def save_traj_update_csv(self, tick: int, old_traj: np.ndarray, new_traj: np.ndarray):
-        os.makedirs("logs", exist_ok=True)
-        with open("logs/traj_update_log.csv", "a", newline="") as f:
-        # with open("traj_update_log.csv", "a", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["tick", tick])
-            writer.writerow(["old_x", "old_y", "old_z"])
-            writer.writerows(old_traj)
-            writer.writerow(["new_x", "new_y", "new_z"])
-            writer.writerows(new_traj)
-            writer.writerow([])  # Leerzeile zur Trennung
+        # Set the First State
+        px0 = self.x_des[start_tick]
+        py0 = self.y_des[start_tick]
+        pz0 = self.z_des[start_tick]
+        state_first_step = np.array([px0, py0, pz0])
 
-        print(f"💾 Trajektorienupdate gespeichert bei Tick {tick}, Länge alt: {len(old_traj)}, neu: {len(new_traj)}")
+        lbx0 = nominal_constrain_lbx.copy()
+        ubx0 = nominal_constrain_ubx.copy()
 
+        lbx0[pos_idx] = state_first_step
+        ubx0[pos_idx] = state_first_step
+
+        self.acados_recompute_solver.constraints_set(0, "lbx", lbx0)
+        self.acados_recompute_solver.constraints_set(0, "ubx", ubx0)
+
+
+
+
+        # Fix Gate position that is to be updated
+        lbx_g = nominal_constrain_lbx.copy()
+        ubx_g = nominal_constrain_ubx.copy()
+
+        lbx_g[pos_idx] = np.array(gate_pos)
+        ubx_g[pos_idx] = np.array(gate_pos)
         
+        self.acados_recompute_solver.constraints_set(rel_gate_tick, "lbx", lbx_g)
+        self.acados_recompute_solver.constraints_set(rel_gate_tick, "ubx", ubx_g)
+
+    
+
+
+        # Fix position of last step -> updated trajectory slice will go back on old trajectory
+        px0 = self.x_des[start_tick + self.N_recompute]
+        py0 = self.y_des[start_tick + self.N_recompute]
+        pz0 = self.z_des[start_tick + self.N_recompute]
+        state_last_step = np.array([px0, py0, pz0])
+
+        lbx_e = nominal_constrain_lbx.copy()
+        ubx_e = nominal_constrain_ubx.copy()
+
+        lbx_e[pos_idx] = state_last_step
+        ubx_e[pos_idx] = state_last_step
+
+        self.acados_recompute_solver.constraints_set(self.N_recompute, "lbx", lbx_e)
+        self.acados_recompute_solver.constraints_set(self.N_recompute, "ubx", ubx_e)
+
+
+        '''
+        # Parameters for costs on Gate-Distance
+        param_ref = np.hstack([         # para_recompute = vertcat(p_gate, R_gate)
+            up_gate_pos,
+            up_gate_quat,
+            ])
+        
+        for j in range(self.N_recompute):
+            self.acados_recompute_solver.set(j, "p", param_ref)
+        
+        self.acados_recompute_solver.set(self.N_recompute, "p", param_ref)
+        '''
+
+        # Warm Start for better convergence
+        pos = np.array(gate_pos)
+        vel = (np.array(gate_pos) - state_first_step) / (rel_gate_tick / self.freq)
+        rpy = [0.0, 0.0, 0.0]
+        force_cur_cmd = [0.4, 0.4]
+        rpy_cmd = [0.0, 0.0, 0.0]
+        warm_start_states = np.concatenate([pos, vel, rpy, force_cur_cmd, rpy_cmd])
+        self._warm_start_from_global(warm_start_states)
+
+
+        # Solve the OCP
+        solver_status = self.acados_recompute_solver.solve()
+
+
+        # If Solver didnt find anything -> keep old traj
+        t_us = self.acados_recompute_solver.get_stats("time_tot")
+        if solver_status != 0:
+            print(f"[WARN] Recompute failed (status {solver_status}) - keep old traj.")
+            # return
+
+
+        # Sammle die vorhergesagte Position (px, py, pz) für alle Knoten 0 … N
+        pos_pred = []                          # → Liste mit N+1 Einträgen
+        for k in range(self.N_recompute + 1):
+            x_k = self.acados_recompute_solver.get(k, "x")
+            pos_pred.append(x_k[:3])           # nur [px, py, pz]
+        pos_pred = np.vstack(pos_pred)         # Shape: (N+1, 3)
+        x_new = pos_pred[:, 0]                 # px
+        y_new = pos_pred[:, 1]                 # py
+        z_new = pos_pred[:, 2]                 # pz
+        end_tick = start_tick + len(x_new)
+
+
+
+
+        self.x_des[start_tick : end_tick]  = x_new
+        self.y_des[start_tick : end_tick]  = y_new
+        self.z_des[start_tick : end_tick]  = z_new
+
+
+
+
+        # For Visulization of the updated Trajectory
+        self.update_traj_vis=np.array([x_new,y_new,z_new])
+        # Plot of points
+        print("📐  Neue Spline-Punkte:")
+        for k, (xi, yi, zi) in enumerate(zip(x_new, y_new, z_new)):
+            print(f"   P{k:02d}: ({xi:+.3f}, {yi:+.3f}, {zi:+.3f})")
+
+
+
+        print(f"✅ Neue Teiltrajektorie um Gate {gate_idx} aktualisiert.")
+        print(f"   Solver: {t_us * 1e-3:6.2f} ms  |  Budget: {1/self.freq*1e3:5.2f} ms")
+
+
+
+
+    def _warm_start_from_global(self, warm_start):
+        """
+        Copy the MPC-Cycle in the Recompute Solver
+        staring from start_tick
+        """
+        N_r  = self.N_recompute
+        solR = self.acados_recompute_solver
+        
+        u_hover = np.array([0.4, 0, 0, 0])
+
+
+        for k in range(N_r):                 # 0 … N_r (inkl. Terminal)
+            solR.set(k, "x", warm_start)
+            solR.set(k, "u", u_hover)
+
+        solR.set(self.N_recompute, "x", warm_start)
+
+
+
+
+
+
+
+
+    def mass_estimator(self, obs):
+
+        max_angle = max_angle=np.deg2rad(20)
+
+
+        params_acc = [20.907574256269616, 3.653687545690674] # params_acc[0] ≈ k_thrust / m_nominal
+        nominal_m = 0.027
+        GRAVITY = 9.806
+
+
+        # Messgrößen
+        vz_dot   = (obs["vel"][2] - self.vz_prev) * self.freq
+        self.vz_prev = obs["vel"][2] # update für nächsten Durchlauf
+
+        roll, pitch, _ = R.from_quat(obs["quat"]).as_euler("xyz", degrees=False)
+        cos_roll_pitch   = np.cos(roll) * np.cos(pitch)
+        
+        # Only update, whne Drone is upright
+        if abs(roll) > max_angle or abs(pitch) > max_angle or cos_roll_pitch < 0.3:
+            return # self.m_hat
+
+
+        denominator = self.last_f_collective * cos_roll_pitch + 1e-6             # Schutz vor 0
+
+        params_acc_0   = (vz_dot + GRAVITY) / denominator - params_acc[1]/denominator
+        if params_acc_0 <= 0:                         # safety against numerial errors
+            return # self.m_hat
+
+        alpha    = 0.02                                     # Glättung
+        self.params_acc_0_hat = (1 - alpha) * self.params_acc_0_hat + alpha * params_acc_0
+        # self.m_hat = k_thrust / self.k_hat                  # neue Massen-Schätzung -> nicht nötig
+
+
+
+
+

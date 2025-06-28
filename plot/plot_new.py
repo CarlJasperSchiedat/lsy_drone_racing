@@ -37,7 +37,7 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
 
     # Gates als rotierte Quadrate
     gate_size = 0.45 / 2
-    gate_size_outer = gate_size + 0.05
+    gate_size_outer = gate_size + 0.1
     gate_color = (1, 0, 0, 0.5)
     gates_positions = np.array(gates_positions)
 
@@ -127,9 +127,9 @@ gates_quat = [   # sind als rpy gegeben und nicht als Quaternion ??????? -> z.B.
 ]
 
 
-
+'''
 plot_waypoints_and_environment(waypoints, obstacles_positions, gates_positions, gates_quat)
-
+'''
 
 '''
 gate_1 = DM(gates_positions[0] + gates_quat[0])  # [x, y, z, qx, qy, qz, qw]
@@ -163,13 +163,14 @@ extended_gates_quat = [[0, 0, 0, 0]] + gates_quat # der erste Eintrag wird nicht
 # X_opt, N_opt = optimize_waypoint_positions(extended_gates, extended_gates_quat, N_list, obstacles_positions, start_vel, velocity_gate4, dt=1/50)
 
 N_opt = [60, 80, 80, 80] # 6 sec - normal
-N_opt = [63, 87, 71, 79] # 6 sec - optimized
-N_opt = [100, 133, 133, 133] # 10 sec - normal
-N_opt = [105, 145, 118, 132] # 10 sec - optimized 6 scaled
-N_opt = [100, 150, 140, 110] # 10 sec - optimized
+# N_opt = [63, 87, 71, 79] # 6 sec - optimized
+N_opt = [75, 76, 75, 74]
+# N_opt = [100, 133, 133, 133] # 10 sec - normal
+# N_opt = [105, 145, 118, 132] # 10 sec - optimized 6 scaled
+# N_opt = [100, 150, 140, 110] # 10 sec - optimized
 # N_opt = [35, 55, 45, 40] # 4 sec - optimized
 # X_opt, cost = optimize_velocity_bounded(extended_gates, extended_gates_quat, N_opt, obstacles_positions, start_vel, velocity_gate4, dt=1/50)
-X_opt, N_opt, cost = optimize_from_given_N_list_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, N_opt, iterations=10, max_shift=0.1, shorten=[], lengthen=[])
+X_opt, N_opt, cost = optimize_from_given_N_list_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, N_opt, iterations=5, max_shift=0.05, shorten=[], lengthen=[])
 
 
 
