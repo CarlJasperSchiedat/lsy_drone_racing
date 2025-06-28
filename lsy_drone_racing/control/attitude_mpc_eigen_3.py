@@ -24,6 +24,35 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
+import os
+import platform
+def rename_acados_dll(name: str):
+
+    """Rename the acados DLL on Windows if needed."""
+    if platform.system().lower() != "windows":
+        return  # Nur unter Windows notwendig
+
+    # print(f"🛠️ In 'rename_acados_dll' with name '{name}'")
+
+    # Alte JSON löschen
+    json_path = f"{name}.json"
+    if os.path.exists(json_path):
+        os.remove(json_path)
+
+    # Alte DLL löschen
+    dll_path = f"c_generated_code/acados_ocp_solver_{name}.dll"
+    if os.path.exists(dll_path):
+        os.remove(dll_path)
+
+    expected = f"c_generated_code/acados_ocp_solver_{name}.dll"
+    actual = f"c_generated_code/libacados_ocp_solver_{name}.dll"
+    if os.path.exists(actual) and not os.path.exists(expected):
+        os.rename(actual, expected)
+        print(f"🛠️ DLL renamed: {actual} ➝ {expected}")
+
+
+
+
 def export_quadrotor_ode_model() -> AcadosModel:
     """Symbolic Quadrotor Model."""
     # Define name of solver to be used in script
@@ -39,34 +68,30 @@ def export_quadrotor_ode_model() -> AcadosModel:
     params_acc = [20.907574256269616, 3.653687545690674]
 
     """Model setting"""
-    # define basic variables in state and input vector
-    px = MX.sym("px")  # 0
-    py = MX.sym("py")  # 1
-    pz = MX.sym("pz")  # 2
-    vx = MX.sym("vx")  # 3
-    vy = MX.sym("vy")  # 4
-    vz = MX.sym("vz")  # 5
-    roll = MX.sym("r")  # 6
-    pitch = MX.sym("p")  # 7
-    yaw = MX.sym("y")  # 8
-    f_collective = MX.sym("f_collective")
+    # Position
+    px, py, pz = MX.sym("px"), MX.sym("py"), MX.sym("pz")
+    # Geschwindigkeit
+    vx, vy, vz = MX.sym("vx"), MX.sym("vy"), MX.sym("vz")
+    # Euler-Winkel
+    roll, pitch, yaw = MX.sym("r"), MX.sym("p"), MX.sym("y")
+    # interne Zustände & Befehle
+    f_collective      = MX.sym("f_collective")
+    f_collective_cmd  = MX.sym("f_collective_cmd")
+    r_cmd, p_cmd, y_cmd = MX.sym("r_cmd"), MX.sym("p_cmd"), MX.sym("y_cmd")
 
-    f_collective_cmd = MX.sym("f_collective_cmd")
-    r_cmd = MX.sym("r_cmd")
-    p_cmd = MX.sym("p_cmd")
-    y_cmd = MX.sym("y_cmd")
-
+    # Eingänge
     df_cmd = MX.sym("df_cmd")
     dr_cmd = MX.sym("dr_cmd")
     dp_cmd = MX.sym("dp_cmd")
     dy_cmd = MX.sym("dy_cmd")
-    #
+
+
+
     # Obstacles as symbolic parameters (4 obstacles in 2D)
     p_obs1 = MX.sym("p_obs1", 2)
     p_obs2 = MX.sym("p_obs2", 2)
     p_obs3 = MX.sym("p_obs3", 2)
     p_obs4 = MX.sym("p_obs4", 2)
-
     p_ref = MX.sym("p_ref", 3)
     #
     # Update the Mass of the Drone online -> bzw. only the corresponding parameter of the model
@@ -92,15 +117,14 @@ def export_quadrotor_ode_model() -> AcadosModel:
     inputs = vertcat(df_cmd, dr_cmd, dp_cmd, dy_cmd)
 
     # Define nonlinear system dynamics
+    acc_term = (params_acc_0 * f_collective + params_acc[1])
     f = vertcat(
         vx,
         vy,
         vz,
-        (params_acc[0] * f_collective + params_acc[1])
-        * (cos(roll) * sin(pitch) * cos(yaw) + sin(roll) * sin(yaw)),
-        (params_acc[0] * f_collective + params_acc[1])
-        * (cos(roll) * sin(pitch) * sin(yaw) - sin(roll) * cos(yaw)),
-        (params_acc_0 * f_collective + params_acc[1]) * cos(roll) * cos(pitch) - GRAVITY,
+        acc_term * (cos(roll) * sin(pitch) * cos(yaw) + sin(roll) * sin(yaw)),
+        acc_term * (cos(roll) * sin(pitch) * sin(yaw) - sin(roll) * cos(yaw)),
+        acc_term * cos(roll) * cos(pitch) - GRAVITY,
         # (params_acc[0] * f_collective + params_acc[1]) * cos(roll) * cos(pitch) - GRAVITY,  # params_acc[0] ≈ k_thrust / m_nominal
         params_roll_rate[0] * roll + params_roll_rate[1] * r_cmd,
         params_pitch_rate[0] * pitch + params_pitch_rate[1] * p_cmd,
@@ -129,12 +153,13 @@ def export_quadrotor_ode_model() -> AcadosModel:
    
     
 
+    # # # #  Werte für 9 Sekunden optimiert # # # # # #
     # Penalize aggressive commands (smoother control)
-    Q_control = 0.05
+    Q_control = 0.05 #0.01
     control_penalty = df_cmd**2 + dr_cmd**2 + dp_cmd**2 + dy_cmd**2
 
     # Penalize large angles (prevents flips)
-    Q_angle = 0.05
+    Q_angle = 0.05 #0.01
     angle_penalty = roll**2 + pitch**2  # Yaw penalty optional
 
     sharpness=8
@@ -144,20 +169,20 @@ def export_quadrotor_ode_model() -> AcadosModel:
     d3 = (px - p_obs3[0])**sharpness + (py - p_obs3[1])**sharpness
     d4 = (px - p_obs4[0])**sharpness + (py - p_obs4[1])**sharpness
     safety_margin = 0.000002 # Min allowed distance squared
-    Q_obs=0 
+    Q_obs = 0 #2
     obs_cost = (0.25*np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
            np.exp(-d3/safety_margin) + 0.5*np.exp(-d4/safety_margin))
 
     #Penalising deviation from Reference trajectory #1
-    Q_pos = 10.0  
+    Q_pos = 10
     pos_error = (px - p_ref[0])**2 + (py - p_ref[1])**2 + (pz - p_ref[2])**2
 
 
     total_cost = (
         Q_pos * pos_error +
         Q_control * control_penalty +
-        Q_angle * angle_penalty
-        +Q_obs*obs_cost)
+        Q_angle * angle_penalty +
+        Q_obs*obs_cost)
 
     model.cost_expr_ext_cost = total_cost
     model.cost_expr_ext_cost_e = Q_pos * pos_error 
@@ -182,14 +207,17 @@ def create_ocp_solver(
 
     ocp.dims.np = model.p.rows()
 
+
+
+
     ## Set Cost
     # For more Information regarding Cost Function Definition in Acados: https://github.com/acados/acados/blob/main/docs/problem_formulation/problem_formulation_ocp_mex.pdf
 
-    
+    # Cost Type
     ocp.cost.cost_type = "EXTERNAL"
     ocp.cost.cost_type_e = "EXTERNAL"
     default_params = np.zeros(ocp.dims.np)
-    ocp.parameter_values = default_params  # Add this line
+    ocp.parameter_values = default_params
    
 
     # Set State Constraints
@@ -220,9 +248,23 @@ def create_ocp_solver(
     # set prediction horizon
     ocp.solver_options.tf = Tf
 
+
+
+
+    rename_acados_dll("lsy_example_mpc_ext")
+
+
+
+
     acados_ocp_solver = AcadosOcpSolver(ocp, json_file="lsy_example_mpc_ext.json", verbose=verbose)
 
     return acados_ocp_solver, ocp
+
+
+
+
+
+
 
 
 class MPController(Controller):
@@ -240,32 +282,11 @@ class MPController(Controller):
         super().__init__(obs, info, config)
         self.freq = config.env.freq
         self._tick = 0
+
         self.y=[]
         self.y_mpc=[]
+
         # Same waypoints as in the trajectory controller. Determined by trial and error.
-        '''
-        self.waypoints = np.array(
-            [
-                [1.0, 1.5, 0.05],
-                [0.8, 1.0, 0.2],
-                [0.55, -0.3, 0.5], # gate 0
-                [0.1, -1.5, 0.65],
-                [1.1, -0.85, 1.15], # gate 1
-                [0.2, 0.5, 0.65],
-                [0.0, 1.2, 0.525], # gate 2
-                [0.0, 1.2, 1.1],
-                [-0.5, 0.0, 1.1], # gate 3
-                [-0.5, -0.5, 1.1],
-                [-0.5, -1.0, 1.1],
-            ]
-        )
-        self.gate_map = {
-            0 : 2,
-            1 : 4,
-            2 : 6,
-            3 : 8
-        }
-        '''
         self.waypoints= np.array([
                 [1.0, 1.5, 0.05],  # Original Punkt 0
                 #[0.9, 1.25, 0.125], # Neu (Mitte zwischen 0 und 1)
@@ -295,23 +316,25 @@ class MPController(Controller):
             3 : 13
         }
 
+
+
+
         self.init_gates=[ [0.45, -0.5, 0.56], [1.0, -1.05, 1.11], [0.0, 1.0, 0.56], [-0.5, 0.0, 1.11], ]
 
 
-        self.prev_obstacle = np.array([
-            [1, 0, 1.4],
-            [0.5, -1, 1.4],
-            [0, 1.5, 1.4],
-            [-0.5, 0.5, 1.4],
-        ])
+        self.prev_obstacle = np.array([ [1, 0, 1.4], [0.5, -1, 1.4], [0, 1.5, 1.4], [-0.5, 0.5, 1.4], ])
         self.prev_gates_quat = [ [0.0, 0.0, 0.92268986, 0.38554308], [0.0, 0.0, -0.38018841, 0.92490906], [0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], ]
         self.prev_gates=[ [0.45, -0.5, 0.56], [1.0, -1.05, 1.11], [0.0, 1.0, 0.56], [-0.5, 0.0, 1.11], ]
+
+
+
 
         # Scale trajectory between 0 and 1
         ts = np.linspace(0, 1, np.shape(self.waypoints)[0])
         cs_x = CubicSpline(ts, self.waypoints[:, 0])
         cs_y = CubicSpline(ts, self.waypoints[:, 1])
         cs_z = CubicSpline(ts, self.waypoints[:, 2])
+
         #visualising traj. Needed for visualisiing draw line##
         tvisual = np.linspace(0, 1, 50)
         x = cs_x(tvisual)
@@ -319,30 +342,34 @@ class MPController(Controller):
         z = cs_z(tvisual)
         self.traj_vis=np.array([x,y,z])
         self.update_traj_vis=np.array([x,y,z])
-        #
+
+
+
+
         des_completion_time = 7
+
+        self.N = 20
+        self.T_HORIZON = 1
+        self.dt = self.T_HORIZON / self.N
+
+
         ts = np.linspace(0, 1, int(self.freq * des_completion_time))
-
-
-
         ticks_per_segment = int(self.freq * des_completion_time) / (len(self.waypoints) - 1)
         self.ticks = np.round(np.arange(0, len(self.waypoints)) * ticks_per_segment).astype(int)
-
-
 
 
         self.x_des = cs_x(ts)
         self.y_des = cs_y(ts)
         self.z_des = cs_z(ts)
 
-        self.N = 20
-        self.T_HORIZON = 1
-        self.dt = self.T_HORIZON / self.N
+        # Append points after trajectory for MPC
         self.x_des = np.concatenate((self.x_des, [self.x_des[-1]] * (2 * self.N + 1)))
         self.y_des = np.concatenate((self.y_des, [self.y_des[-1]] * (2 * self.N + 1)))
         self.z_des = np.concatenate((self.z_des, [self.z_des[-1]] * (2 * self.N + 1)))
     
+
         self.acados_ocp_solver, self.ocp = create_ocp_solver(self.T_HORIZON, self.N)
+
 
         self.last_f_collective = 0.3
         self.last_rpy_cmd = np.zeros(3)
@@ -351,6 +378,8 @@ class MPController(Controller):
         self.finished = False
         self.params_acc_0_hat = 20.907574256269616 # params_acc[0] ≈ k_thrust / m_nominal ; nominal value given for nominal_mass = 0.027
         self.vz_prev = 0.0 # estimated velocity at start = 0
+
+
 
 
     def compute_control(
@@ -368,6 +397,7 @@ class MPController(Controller):
         """
         self.mass_estimator(obs)
 
+        # Update Gates ?
         updated_gate = self.check_for_update_2(obs)
         if updated_gate:
             self.update_traj(obs,updated_gate)
@@ -377,16 +407,16 @@ class MPController(Controller):
 
 
 
-
-
         i = min(self._tick, len(self.x_des) - 1)
         if self._tick > i:
             self.finished = True
 
+
+
+
         q = obs["quat"]
         r = R.from_quat(q)
-        # Convert to Euler angles in XYZ order
-        rpy = r.as_euler("xyz", degrees=False)  # Set degrees=False for radians
+        rpy = r.as_euler("xyz", degrees=False)
 
         xcurrent = np.concatenate(
             (
@@ -400,7 +430,7 @@ class MPController(Controller):
         self.acados_ocp_solver.set(0, "lbx", xcurrent)
         self.acados_ocp_solver.set(0, "ubx", xcurrent)
 
-        self.y=[]
+        self.y=[] # self.y for debug visulization
         for j in range(self.N):
             
             yref = np.hstack([ # params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, m)
@@ -412,7 +442,8 @@ class MPController(Controller):
                 ])
 
             self.acados_ocp_solver.set(j, "p", yref)
-            self.y.append(yref)
+            self.y.append(yref) # self.y for debug visulization
+
 
         yref_N = np.hstack([
             self.prev_obstacle[:, :2].flatten(),
@@ -422,17 +453,16 @@ class MPController(Controller):
             self.params_acc_0_hat,
         ])
         self.acados_ocp_solver.set(self.N, "p", yref_N)
-        #### Obs avoidance
+
         
         self.acados_ocp_solver.solve()
-        self.y_mpc = []
-        for j in range(self.N + 1):  # Include terminal state
-            x_pred = self.acados_ocp_solver.get(j, "x")
-            # Extract relevant states to match your y_ref format if needed
-            # This depends on how you want to compare them
-            y_mpc = x_pred[:len(yref_N)]  # Adjust this based on your state vector
-            self.y_mpc.append(y_mpc)
 
+
+        self.y_mpc = [] # for Debug: Plot the prediction of the MPC
+        for j in range(self.N + 1):
+            x_pred = self.acados_ocp_solver.get(j, "x")
+            y_mpc = x_pred[:len(yref_N)] # [:len(yref_N)] # only take the nessessary states
+            self.y_mpc.append(y_mpc)
 
 
 
@@ -446,6 +476,9 @@ class MPController(Controller):
         cmd = x1[10:14]
 
         return cmd
+
+
+
 
     def step_callback(
         self,
@@ -464,6 +497,9 @@ class MPController(Controller):
     def episode_callback(self):
         """Reset the integral error."""
         self._tick = 0
+
+
+
 
     def check_for_update(self,obs):
         """
@@ -492,24 +528,33 @@ class MPController(Controller):
 
         return flag
     
+
+
+
     def check_for_update_2(self, obs):
         """Check if any gate's position has changed significantly.
         Returns:
             - `None` if no gate moved beyond threshold
             - The **index (int)** of the first changed gate (row-wise comparison)
         """
-        current_gates = np.asarray(obs["gates_pos"])  # Shape: (N_gates, 3)
+        threshold = 0.10
+
+        current_gates = np.asarray(obs["gates_pos"])
+
         for gate_idx in range(len(self.prev_gates)):  # Compare each gate (row) individually
             prev_gate = np.asarray(self.prev_gates[gate_idx])
             current_gate = np.asarray(current_gates[gate_idx])
             
-            if np.linalg.norm(prev_gate - current_gate) > 0.12:  # Threshold
+            if np.linalg.norm(prev_gate - current_gate) > threshold:
                 self.prev_gates = current_gates.copy()  # Update stored positions
                 print(f"Gate {gate_idx} moved significantly.")
                 print(self.prev_gates[gate_idx])
-                return gate_idx+1  # Add one, so that we can check update for gate 0 with if statement. 
+                return gate_idx + 1  # Add one, so that we can check update for gate 0 with if statement. 
         
         return None
+
+
+
 
     def update_traj(self, obs,updated_gate):
         """
@@ -521,12 +566,19 @@ class MPController(Controller):
             return
         
 
-        for i, idx in self.gate_map.items(): # update the waypoints that correspond to a specific gate
+        # update the waypoints that correspond to a specific gate
+        for i, idx in self.gate_map.items(): # waypoint corresponding to gate might ot be on same position as gate -> shift as nominal gate is shifted
             diff=self.prev_gates[i]-self.init_gates[i]
             self.waypoints[idx] += diff
 
+
+
+
         gate_idx = updated_gate-1 # Subtract the one we added in check_for_update because of if statement
         center_idx = self.gate_map[int(gate_idx)]
+
+
+
 
         # 1. Neue Sub-Waypoints auswählen
         rel_indices = [-1, 0, 1]
@@ -546,6 +598,8 @@ class MPController(Controller):
         
 
 
+
+        # 2. Preparation for new segment
         ts = []
         for i in range(len(dt_segments)):
             t_start = tick_times[i]
@@ -553,9 +607,10 @@ class MPController(Controller):
             n_points = max(2, dt_segments[i])  # mind. 2 Punkte pro Segment
             ts_seg = np.linspace(t_start, t_end, n_points, endpoint=False)
             ts.extend(ts_seg)
-
         ts.append(tick_times[-1])  # letzten Zeitpunkt ergänzen
         ts = np.array(ts)
+
+
 
 
         # --- 3. Neue Splines erstellen
@@ -566,7 +621,11 @@ class MPController(Controller):
         x_new = cs_x(ts)
         y_new = cs_y(ts)
         z_new = cs_z(ts)
+
+        # For Visulization of the updated Trajectory
         self.update_traj_vis=np.array([x_new,y_new,z_new])
+
+
 
         # --- 4. Aktuelle Trajektorie ersetzen
         tick_min = tick_section[0]
@@ -596,9 +655,11 @@ class MPController(Controller):
         vz_dot   = (obs["vel"][2] - self.vz_prev) / self.dt
         self.vz_prev = obs["vel"][2] # update für nächsten Durchlauf
 
+
         roll, pitch, _ = R.from_quat(obs["quat"]).as_euler("xyz", degrees=False)
         cos_roll_pitch   = np.cos(roll) * np.cos(pitch)
         
+
         # Only update, whne Drone is upright
         if abs(roll) > max_angle or abs(pitch) > max_angle or cos_roll_pitch < 0.3:
             return # self.m_hat
@@ -606,9 +667,11 @@ class MPController(Controller):
 
         denominator = self.last_f_collective * cos_roll_pitch + 1e-6             # Schutz vor 0
 
+
         params_acc_0   = (vz_dot + GRAVITY) / denominator - params_acc[1]/denominator
         if params_acc_0 <= 0:                         # safety against numerial errors
             return # self.m_hat
+
 
         alpha    = 0.02                                     # Glättung
         self.params_acc_0_hat = (1 - alpha) * self.params_acc_0_hat + alpha * params_acc_0

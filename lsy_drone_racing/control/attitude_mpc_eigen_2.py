@@ -429,15 +429,18 @@ class MPController(Controller):
         ])
         self.acados_ocp_solver.set(self.N, "p", yref_N)
 
+
         self.acados_ocp_solver.solve()
 
-        # for Debug: Plot the prediction of the MPPC
+
+        # for Debug: Plot the prediction of the MPC
         self.y_mpc = []
         for j in range(self.N + 1):
             x_pred = self.acados_ocp_solver.get(j, "x")
             y_mpc = x_pred[:3] # [:len(yref_N)] # only take the nessessary states
             self.y_mpc.append(y_mpc)
         
+
         x1 = self.acados_ocp_solver.get(1, "x")
         w = 1 / self.freq / self.dt
         self.last_f_collective = self.last_f_collective * (1 - w) + x1[9] * w
