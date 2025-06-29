@@ -2,11 +2,14 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
+
 from scipy.interpolate import CubicSpline
 
 
 
 def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_positions, gates_quat,show_spline=True):
+
+
     def quaternion_to_rotation_matrix(q):
         x, y, z, w = q
         R = np.array([
@@ -15,6 +18,11 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
             [2*(x*z - y*w),    2*(y*z + x*w),    1-2*(x**2+y**2)]
         ])
         return R
+    
+    def rotate_and_translate(square, R, gate):
+        return (R @ square.T).T + gate
+
+
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -36,8 +44,10 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
 
         ax.plot(spline_x, spline_y, spline_z, 'g-', linewidth=2, label='Cubic Spline Trajectory')
 
-    # Gates as rotated squares
-    gate_size = 0.2
+
+    # Gates als rotierte Quadrate
+    gate_size = 0.45 / 2
+    gate_size_outer = gate_size + 0.05
     gate_color = (1, 0, 0, 0.5)
     gates_positions = np.array(gates_positions)
 
@@ -45,17 +55,15 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
         quat = gates_quat[i]
         R = quaternion_to_rotation_matrix(quat)
 
-        local_square = np.array([
+        # Inner gate (actual fly-through area)
+        inner_square = np.array([
             [-gate_size, 0, -gate_size],
             [ gate_size, 0, -gate_size],
             [ gate_size, 0,  gate_size],
             [-gate_size, 0,  gate_size],
         ])
-
-        rotated_square = (R @ local_square.T).T
-        square = rotated_square + gate
-
-        poly = Poly3DCollection([square], color=gate_color, label='Gate' if i == 0 else "")
+        inner_square = rotate_and_translate(inner_square, R, gate)
+        poly = Poly3DCollection([inner_square], color=gate_color, label='Gate' if i == 0 else "")
         ax.add_collection3d(poly)
 
     ax.scatter(gates_positions[:, 0], gates_positions[:, 1], gates_positions[:, 2], c='r', s=50, label=None)
@@ -94,6 +102,7 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
     ax.set_title('3D Waypoints mit Stäben, rotierbaren Gates' +
                  (' und Spline-Trajektorie' if show_spline else ''))
     plt.show()
+
 
 waypoints = np.array(
             [
@@ -135,11 +144,13 @@ gates_positions = [
     [-0.5, 0.0, 1.11],
 ]
 
-gates_quat = [
+gates_quat = [   # sind als rpy gegeben und nicht als Quaternion ??????? -> z.B. siehe level0.toml
     [0.0, 0.0, 0.92388, 0.38268],
     [0.0, 0.0, -0.38268, 0.92388],
     [0.0, 0.0, 0.0, 1.0],
     [0.0, 0.0, 1.0, 0.0],
 ]
 
+
 plot_waypoints_and_environment(waypoints, obstacles_positions, gates_positions, gates_quat)
+
