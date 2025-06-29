@@ -137,16 +137,16 @@ def export_quadrotor_ode_model() -> AcadosModel:
     Q_angle = 0.05
     angle_penalty = roll**2 + pitch**2  # Yaw penalty optional
 
-    sharpness=8
+    sharpness=2
     #Penalising proximity to obstacles
     d1 = (px - p_obs1[0])**sharpness + (py - p_obs1[1])**sharpness
     d2 = (px - p_obs2[0])**sharpness + (py - p_obs2[1])**sharpness
     d3 = (px - p_obs3[0])**sharpness + (py - p_obs3[1])**sharpness
     d4 = (px - p_obs4[0])**sharpness + (py - p_obs4[1])**sharpness
-    safety_margin = 0.000002 # Min allowed distance squared
-    Q_obs=0 
-    obs_cost = (0.25*np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
-           np.exp(-d3/safety_margin) + 0.5*np.exp(-d4/safety_margin))
+    safety_margin = 0.015 # Min allowed distance squared
+    Q_obs=50 
+    obs_cost = (0*np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
+           0*np.exp(-d3/safety_margin) + np.exp(-d4/safety_margin))
 
     #Penalising deviation from Reference trajectory #1
     Q_pos = 10.0  
@@ -284,9 +284,9 @@ class MPController(Controller):
                 [-0.15, 0.6, 1.1],  # Neu (Mitte zwischen 7 und 8)
                 [-0.5, 0.0, 1.1],   # Original Punkt 8 (gate 3)
                 #[-0.5, -0.25, 1.1], # Neu (Mitte zwischen 8 und 9)
-                [-0.5, -0.5, 1.1],  # Original Punkt 9
+                [-0.8, -0.5, 1.1],#[-0.7, -0.5, 1.1],#[-0.5, -0.5, 1.1],  # Original Punkt 9
                 #[-0.5, -0.75, 1.1], # Neu (Mitte zwischen 9 und 10)
-                [-0.5, -1.0, 1.1],  # Original Punkt 10
+                [-1.1, -1.0, 1.1],#[-0.9, -1.0, 1.1],#[-0.5, -1.0, 1.1],  # Original Punkt 10
             ])
         self.gate_map = {
             0 : 3,
@@ -320,7 +320,7 @@ class MPController(Controller):
         self.traj_vis=np.array([x,y,z])
         self.update_traj_vis=np.array([x,y,z])
         #
-        des_completion_time = 7
+        des_completion_time = 6
         ts = np.linspace(0, 1, int(self.freq * des_completion_time))
 
 

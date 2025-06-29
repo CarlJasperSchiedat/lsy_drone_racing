@@ -269,10 +269,10 @@ class MPController(Controller):
         self.waypoints= np.array([
                 [1.0, 1.5, 0.05],  # Original Punkt 0
                 #[0.9, 1.25, 0.125], # Neu (Mitte zwischen 0 und 1)
-                [0.95, 1.0, 0.2],#[0.8, 1.0, 0.2],    # Original Punkt 1
-                [0.8, 0.35, 0.35],#[0.675, 0.35, 0.35], # Neu (Mitte zwischen 1 und 2)
-                [0.6, -0.3, 0.5],#[0.5, -0.3, 0.5],#[0.55, -0.3, 0.5],  # Original Punkt 2 (gate 0)
-                [0.12, -0.9, 0.575],#[0.3, -0.9, 0.575],#[0.325, -0.9, 0.575], # Neu (Mitte zwischen 2 und 3)
+                [0.87, 1.0, 0.2],#[0.8, 1.0, 0.2],    # Original Punkt 1
+                [0.75, 0.35, 0.35],#[0.675, 0.35, 0.35], # Neu (Mitte zwischen 1 und 2)
+                [0.57, -0.3, 0.5],#[0.5, -0.3, 0.5],#[0.55, -0.3, 0.5],  # Original Punkt 2 (gate 0)
+                [0.23, -0.9, 0.575],#[0.3, -0.9, 0.575],#[0.325, -0.9, 0.575], # Neu (Mitte zwischen 2 und 3)
                 [0.1, -1.5, 0.65],  # Original Punkt 3
                 [0.75, -1.3, 0.9],#[0.6, -1.175, 0.9], # Neu (Mitte zwischen 3 und 4)
                 [1.1, -0.85, 1.15], # Original Punkt 4 (gate 1)
@@ -320,7 +320,7 @@ class MPController(Controller):
         self.traj_vis=np.array([x,y,z])
         self.update_traj_vis=np.array([x,y,z])
         #
-        des_completion_time = 7
+        des_completion_time = 6.3
         ts = np.linspace(0, 1, int(self.freq * des_completion_time))
 
 
@@ -503,7 +503,7 @@ class MPController(Controller):
             prev_gate = np.asarray(self.prev_gates[gate_idx])
             current_gate = np.asarray(current_gates[gate_idx])
             
-            if np.linalg.norm(prev_gate - current_gate) > 0.05:  # Threshold
+            if np.linalg.norm(prev_gate - current_gate) > 0.12:  # Threshold
                 self.prev_gates = current_gates.copy()  # Update stored positions
                 print(f"Gate {gate_idx} moved significantly.")
                 print(self.prev_gates[gate_idx])
