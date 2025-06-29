@@ -125,3 +125,57 @@ def _rotation_matrix_from_points(p1: NDArray, p2: NDArray) -> R:
     x_axis = (v := np.cross(random_vector, z_axis)) / np.linalg.norm(v, axis=-1, keepdims=True)
     y_axis = np.cross(z_axis, x_axis)
     return R.from_matrix(np.stack((x_axis, y_axis, z_axis), axis=-1))
+
+
+def draw_tunnel(
+    env: RaceCoreEnv,
+    centers: NDArray,
+    radii: NDArray,
+    step: int = 2,
+    n_seg_circle: int = 32,
+    line_width: int = 1.0,
+    alpha: float = 0.15,
+    rgba: NDArray | None = None,
+):
+    """Draw tunnel constrain into the simulation.
+
+    Args:
+        env: The drone racing environment.
+        centers: An array of [N, 3] points that are the centers of the tunnel.
+        radii: radii of tunnel for each centre.
+        alpha: The transparency of the tunnel.
+        rgba: The color of the tunnel.
+
+    Note:
+        This function has to be called every time before the env.render() step.
+    """
+    assert radii.shape[0] == centers.shape[0], "radii muss Länge N haben"
+
+    sim = env.unwrapped.sim
+    if sim.viewer is None:
+        return
+    
+
+    if rgba is None:
+        rgba = np.array([0.0, 0.7, 1.0, alpha])  # cyan
+
+
+    for k in range(0, len(centers), step):
+        c = centers[k]
+        r = radii[k]
+        # Tangenten-Normalenvektor bestimmen
+        n = (centers[k + 1] - c) if k < len(centers) - 1 else (c - centers[k - 1])
+        n /= np.linalg.norm(n) + 1e-9
+
+        # Orthonormale Basis (u,v) in Kreisebene
+        dummy = np.array([1.0, 0.0, 0.0])
+        if abs(np.dot(dummy, n)) > 0.9:
+            dummy = np.array([0.0, 1.0, 0.0])
+        u = np.cross(n, dummy);  u /= np.linalg.norm(u)
+        v = np.cross(n, u)
+
+        # Kreis­punkte und Segmente
+        angles = np.linspace(0.0, 2 * np.pi, n_seg_circle, endpoint=True)
+        pts = c + (r * np.cos(angles))[:, None] * u + (r * np.sin(angles))[:, None] * v
+
+        draw_line(env=env,points=pts,rgba=rgba, min_size=line_width,max_size=line_width)

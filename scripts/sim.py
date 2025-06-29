@@ -13,6 +13,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import mujoco
 import fire
 import gymnasium
 from gymnasium.wrappers.jax_to_numpy import JaxToNumpy
@@ -23,8 +24,7 @@ rgba_2=np.array([0,0,1,1])
 rgba_3=np.array([0,1,0,1])
 rgba_4=np.array([1,1,0,1])
 
-from lsy_drone_racing.utils import load_config, load_controller,draw_line
-from lsy_drone_racing.utils import load_config, load_controller,draw_line
+from lsy_drone_racing.utils import load_config, load_controller, draw_line, draw_tunnel
 
 if TYPE_CHECKING:
     from ml_collections import ConfigDict
@@ -91,6 +91,7 @@ def simulate(
 
             action = controller.compute_control(obs, info)
             y_ref = np.array([y[8:11] for y in controller.y])
+            radii   = np.array([y[-1]   for y in controller.y])
             y_mpc=np.array([y[:3] for y in controller.y_mpc])
             
             obs, reward, terminated, truncated, info = env.step(action)
@@ -104,11 +105,18 @@ def simulate(
             # Synchronize the GUI.
             if config.sim.gui:
                 if ((i * fps) % config.env.freq) < fps:
-                    draw_line(env=env,points=controller.traj_vis.T,rgba=rgba_2)
-                    draw_line(env=env,points=y_mpc,rgba=rgba_1)
-                    draw_line(env=env,points=y_ref,rgba=rgba_3)
-                    draw_line(env=env,points=controller.update_traj_vis.T,rgba=rgba_4)
+                    draw_line(env=env,points=y_mpc,rgba=rgba_1) # optimized MPC trajectory
+                    draw_line(env=env,points=controller.traj_vis.T,rgba=rgba_2) # nominal trajectory
+                    draw_line(env=env,points=controller.update_traj_vis.T,rgba=rgba_4) # updated trajectory segment
+                    
+                    draw_line(env=env,points=y_ref,rgba=rgba_3, min_size=6.0,max_size=6.0) # green MPC line -> reference trajectory
+
+                    draw_tunnel(env=env,centers=y_ref,radii=radii,rgba=rgba_1) # MPC tunnel
+
                     env.render()
+                if i == 1:
+                    viewer = env.unwrapped.sim.viewer.viewer
+                    viewer.vopt.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = True
             i += 1
 
         controller.episode_callback()  # Update the controller internal state and models.

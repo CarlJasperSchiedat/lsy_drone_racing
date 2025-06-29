@@ -27,13 +27,12 @@ if TYPE_CHECKING:
 
 import os
 import platform
+os.environ["CC"] = "gcc"
+os.environ["LD"] = "gcc"
+os.environ["RM"] = "del"
 def rename_acados_dll(name: str):
     # Workaround für acados auf Windows – sorgt dafür, dass Kompilierung klappt
     """Rename the acados DLL on Windows if needed."""
-
-    os.environ["CC"] = "gcc"
-    os.environ["LD"] = "gcc"
-    os.environ["RM"] = "del"
 
     if platform.system().lower() != "windows":
         return  # Nur unter Windows notwendig
@@ -99,9 +98,13 @@ def export_quadrotor_ode_model() -> AcadosModel:
     p_obs3 = MX.sym("p_obs3", 2)
     p_obs4 = MX.sym("p_obs4", 2)
     p_ref = MX.sym("p_ref", 3)
-    #
+    
     # Update the Mass of the Drone online -> bzw. only the corresponding parameter of the model
     params_acc_0 = MX.sym("params_acc_0")
+
+    # Prameters for the Tunnel-Constrains
+    p_tun_tan = MX.sym("y_ref_d", 3)     # Tunnel Tangente (x,y,z)
+    p_tun_r = MX.sym("tunnel_r")        # Breite (Radius)
 
     # define state and input vector
     states = vertcat(
@@ -144,7 +147,7 @@ def export_quadrotor_ode_model() -> AcadosModel:
 
 
     #Define params necessary for external cost function
-    params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, params_acc_0)
+    params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, params_acc_0, p_tun_tan, p_tun_r)
 
     # Initialize the nonlinear model for NMPC formulation
     model = AcadosModel()
@@ -156,16 +159,26 @@ def export_quadrotor_ode_model() -> AcadosModel:
     model.p = params
 
   
-   
-    
 
-    # # # #  Werte für 9 Sekunden optimiert # # # # # #
+
+    # # # # # # Tunnel Constaints nach MPCC # # # # # # 
+    err = vertcat(px, py, pz) - p_ref
+    err_par = (p_tun_tan.T @ err) * p_tun_tan
+    err_senk = err - err_par
+    h_tunnel  = (err_senk.T @ err_senk) - p_tun_r**2
+
+    model.con_h_expr = vertcat(h_tunnel)
+
+
+
+
+    # # # # # #  Werte für 9 Sekunden optimierte Kostenfunktion # # # # # #
     # Penalize aggressive commands (smoother control)
-    Q_control = 0.05 #0.01
+    Q_control = 0.01 #0.01
     control_penalty = df_cmd**2 + dr_cmd**2 + dp_cmd**2 + dy_cmd**2
 
     # Penalize large angles (prevents flips)
-    Q_angle = 0.05 #0.01
+    Q_angle = 0.01 #0.01
     angle_penalty = roll**2 + pitch**2  # Yaw penalty optional
 
     sharpness=8
@@ -181,6 +194,7 @@ def export_quadrotor_ode_model() -> AcadosModel:
 
     #Penalising deviation from Reference trajectory #1
     Q_pos = 10
+    Q_pos_e = 10
     pos_error = (px - p_ref[0])**2 + (py - p_ref[1])**2 + (pz - p_ref[2])**2
 
 
@@ -191,7 +205,7 @@ def export_quadrotor_ode_model() -> AcadosModel:
         Q_obs*obs_cost)
 
     model.cost_expr_ext_cost = total_cost
-    model.cost_expr_ext_cost_e = Q_pos * pos_error 
+    model.cost_expr_ext_cost_e = Q_pos_e * pos_error 
 
 
     return model
@@ -234,6 +248,10 @@ def create_ocp_solver(
     nx = model.x.rows()
     ocp.constraints.x0 = np.zeros((nx))
 
+    # Non-linear Tunnel Constraints
+    ocp.dims.nh = 1
+    ocp.constraints.lh = np.array([-100000])
+    ocp.constraints.uh = np.array([0.0])
 
 
 
@@ -386,6 +404,11 @@ class MPController(Controller):
         self.vz_prev = 0.0 # estimated velocity at start = 0
 
 
+        self.tunnel_width = 0.3 # Tunnel width (radius) for the MPC Tunnel constraints
+        self.tunnel_w_gate = 0.1 # Tunnel width at the gate
+        self.tunnel_trans = 0.6 # Distance at which the tunnel width transitions from gate width to far width
+
+
 
 
     def compute_control(
@@ -415,15 +438,13 @@ class MPController(Controller):
 
 
 
-
-
         i = min(self._tick, len(self.x_des) - 1)
         if self._tick > i:
             self.finished = True
 
 
 
-
+        # Set start state for the MPC
         q = obs["quat"]
         r = R.from_quat(q)
         rpy = r.as_euler("xyz", degrees=False)
@@ -440,20 +461,38 @@ class MPController(Controller):
         self.acados_ocp_solver.set(0, "lbx", xcurrent)
         self.acados_ocp_solver.set(0, "ubx", xcurrent)
 
+
+        # Set parameters for the MPC
         self.y=[] # self.y for debug visulization
         for j in range(self.N):
             
-            yref = np.hstack([ # params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, m)
+            y_ref = np.array([ self.x_des[i + j], self.y_des[i + j], self.z_des[i + j] ])
+
+            # # Help-Parameters for the Tunnel Constraints
+            y_ref_p1 = np.array([ self.x_des[i + j + 1], self.y_des[i + j + 1], self.z_des[i + j + 1] ])
+            delta = np.array(y_ref_p1 - y_ref)
+            tangent_norm = delta / ( np.linalg.norm(delta) + 1e-6 )
+
+            tunnel_width = self._tunnel_radius(y_ref)
+
+            yref = np.hstack([ # params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, params_acc_0, p_tun_tan, p_tun_r)
                 self.prev_obstacle[:, :2].flatten(),
-                self.x_des[i + j],
-                self.y_des[i + j],
-                self.z_des[i + j],
+                y_ref, 
                 self.params_acc_0_hat,
+                tangent_norm,
+                tunnel_width,
                 ])
 
             self.acados_ocp_solver.set(j, "p", yref)
             self.y.append(yref) # self.y for debug visulization
 
+
+        # # Help-Parameters for the Tunnel Constraints
+        y_ref = np.array([ self.x_des[i + self.N], self.y_des[i + self.N], self.z_des[i + self.N] ])
+        y_ref_p1 = np.array([ self.x_des[i + self.N + 1], self.y_des[i + self.N + 1], self.z_des[i + self.N + 1] ])
+        delta = np.array(y_ref_p1 - y_ref)
+        tangent_norm = delta / ( np.linalg.norm(delta) + 1e-6 )
+        tunnel_width = self._tunnel_radius(y_ref)
 
         yref_N = np.hstack([
             self.prev_obstacle[:, :2].flatten(),
@@ -461,6 +500,8 @@ class MPController(Controller):
             self.y_des[i + self.N],
             self.z_des[i + self.N],
             self.params_acc_0_hat,
+            tangent_norm,
+            tunnel_width,
         ])
         self.acados_ocp_solver.set(self.N, "p", yref_N)
 
@@ -687,5 +728,20 @@ class MPController(Controller):
         self.params_acc_0_hat = (1 - alpha) * self.params_acc_0_hat + alpha * params_acc_0
         # self.m_hat = k_thrust / self.k_hat                  # neue Massen-Schätzung -> nicht nötig
 
+
+
+
+    def _tunnel_radius(self, p_ref: np.ndarray) -> float:
+        """
+        ref_pt: np.array([x,y,z]) eines MPC-Knotens
+        """
+        # Entfernung zum nächsten Gate-Zentrum
+        d_gate = np.min(np.linalg.norm(self.prev_gates - p_ref, axis=1))
+
+        # lineare Interpolation zwischen R_gate und R_far 
+        alpha = np.clip(d_gate / self.tunnel_trans, 0.0, 1.0)
+
+        return self.tunnel_w_gate + (self.tunnel_width - self.tunnel_w_gate) * alpha
+    
 
 
