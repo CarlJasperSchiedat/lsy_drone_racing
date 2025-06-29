@@ -373,15 +373,6 @@ class MPController(Controller):
 
 
 
-        if self.des_completion_time*0.23 * self.freq > self._tick > 0.2 * self.des_completion_time* self.freq:
-            print('slowed')
-
-        if self.des_completion_time*0.72 * self.freq > self._tick > 0.7 * self.des_completion_time * self.freq:
-            print('slowed')
-
-
-
-
 
         i = min(self._tick, len(self.x_des) - 1)
         if self._tick > i:
