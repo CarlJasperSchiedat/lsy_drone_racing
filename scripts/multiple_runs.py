@@ -5,7 +5,7 @@ from sim import simulate
 def run_multiple_simulations():
     # Run the simulation 10 times
     counter=0
-    for run in range(1, 21):
+    for run in range(1, 11):
         print(f"\n=== Starting simulation run {run}/10 ===")
         
         # Random wait to help ensure different seeds
