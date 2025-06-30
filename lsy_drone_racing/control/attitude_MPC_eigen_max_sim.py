@@ -569,7 +569,7 @@ class MPController(Controller):
         # --- 4. Aktuelle Trajektorie ersetzen
         tick_min = tick_section[0]
         tick_max = tick_section[-1]
-        print(f"🔁 Ersetze Trajektorie von Tick {tick_min} bis {tick_max} ({tick_max - tick_min} Punkte)")
+       
 
 
         self.x_des[tick_min:tick_max + 1]  = x_new
