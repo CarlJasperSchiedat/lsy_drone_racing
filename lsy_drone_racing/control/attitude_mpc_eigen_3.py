@@ -188,7 +188,7 @@ def export_quadrotor_ode_model() -> AcadosModel:
     d3 = (px - p_obs3[0])**sharpness + (py - p_obs3[1])**sharpness
     d4 = (px - p_obs4[0])**sharpness + (py - p_obs4[1])**sharpness
     safety_margin = 0.000002 # Min allowed distance squared
-    Q_obs = 0 #2
+    Q_obs = 5 #2
     obs_cost = (0.25*np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
            np.exp(-d3/safety_margin) + 0.5*np.exp(-d4/safety_margin))
 
@@ -242,7 +242,7 @@ def create_ocp_solver(
 
     # Set State Constraints
     ocp.constraints.lbx = np.array([0.1, 0.1, -1.57, -1.57, -1.57])
-    ocp.constraints.ubx = np.array([0.55, 0.55, 1.57, 1.57, 1.57])
+    ocp.constraints.ubx = np.array([0.60, 0.60, 1.57, 1.57, 1.57]) # 0.55
     ocp.constraints.idxbx = np.array([9, 10, 11, 12, 13])
 
     nx = model.x.rows()
@@ -370,7 +370,7 @@ class MPController(Controller):
 
 
 
-        des_completion_time = 7
+        des_completion_time = 5.3
 
         self.N = 20
         self.T_HORIZON = 1
@@ -404,8 +404,8 @@ class MPController(Controller):
         self.vz_prev = 0.0 # estimated velocity at start = 0
 
 
-        self.tunnel_width = 0.3 # Tunnel width (radius) for the MPC Tunnel constraints
-        self.tunnel_w_gate = 0.1 # Tunnel width at the gate
+        self.tunnel_width = 0.4 # Tunnel width (radius) for the MPC Tunnel constraints
+        self.tunnel_w_gate = 0.2 # Tunnel width at the gate
         self.tunnel_trans = 0.6 # Distance at which the tunnel width transitions from gate width to far width
 
 

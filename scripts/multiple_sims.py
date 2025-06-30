@@ -8,7 +8,7 @@ def run_multiple_simulations():
     # Run the simulation 10 times
     finished_counter = 0
 
-    how_many = 10
+    how_many = 2
     for run in range(1, how_many +1):
         print(f"\n=== Starting simulation run {run}/{how_many} ===")
         
