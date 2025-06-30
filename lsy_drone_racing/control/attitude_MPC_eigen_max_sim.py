@@ -270,19 +270,19 @@ class MPController(Controller):
                 [1.0, 1.5, 0.05],  # Original Punkt 0
                 [0.95, 1.0, 0.2],   # Original Punkt 1
                 [0.8, 0.3, 0.35], # Neu (Mitte zwischen 1 und 2)
-                [0.65, -0.2, 0.5], # Original Punkt 2 (gate 0)
+                [0.7, -0.2, 0.5],#[0.65, -0.2, 0.5], # Original Punkt 2 (gate 0)
                 [0.12, -0.9, 0.575], # Neu (Mitte zwischen 2 und 3)
                 [0.1, -1.5, 0.65],  # Original Punkt 3
-                [0.75, -1.3, 0.9], # Neu (Mitte zwischen 3 und 4)
-                [1.1, -0.85, 1.15], # Original Punkt 4 (gate 1)
-                [0.65, -0.175, 0.9], # Neu (Mitte zwischen 4 und 5)
-                [0.1, 0.45, 0.5],#[0.1, 0.45, 0.55],   
-                [0.0, 1.2, 0.375],#[0.0, 1.2, 0.425],  # Original Punkt 6 (gate 2)
-                [0.0, 1.2, 1.1],    # Original Punkt 7
+                [0.85, -1.4, 0.9],#[0.8, -1.35, 0.9],#[0.75, -1.3, 0.9], # Neu (Mitte zwischen 3 und 4)
+                [1.15, -0.8, 1.15],#[1.1, -0.85, 1.15], # Original Punkt 4 (gate 1)
+                [0.65, -0.175, 0.85], # Neu (Mitte zwischen 4 und 5)
+                [0.1, 0.45, 0.45],#[0.1, 0.45, 0.55],   
+                [0.0, 1.28, 0.375],#[0.0, 1.2, 0.375],#[0.0, 1.2, 0.425],  # Original Punkt 6 (gate 2)
+                [0.0, 1.28, 1.1], #[0.0, 1.2, 1.1],    # Original Punkt 7
                 [-0.15, 0.6, 1.1],  # Neu (Mitte zwischen 7 und 8)
                 [-0.5, 0.0, 1.1],   # Original Punkt 8 (gate 3)
-                [-0.9, -0.5, 1.1],#[-0.8, -0.5, 1.1],  # Original Punkt 9
-                [-1.7, -1.0, 1.1],#[-1.4, -1.0, 1.1],#[-1.1, -1.0, 1.1],  # Original Punkt 10
+                [-0.92, -0.5, 1.1],#[-0.9, -0.5, 1.1],#[-0.8, -0.5, 1.1],  # Original Punkt 9
+                [-1.6, -1.0, 1.1],#[-1.4, -1.0, 1.1],#[-1.1, -1.0, 1.1],  # Original Punkt 10
             ])
         self.gate_map = {
             0 : 3,
@@ -316,7 +316,7 @@ class MPController(Controller):
         self.traj_vis=np.array([x,y,z])
         self.update_traj_vis=np.array([x,y,z])
         #
-        self.des_completion_time = 6.35
+        self.des_completion_time = 5.5
         ts = np.linspace(0, 1, int(self.freq * self.des_completion_time))
         #ts = generate_nonuniform_ts(self.freq, self.des_completion_time)
 
@@ -368,12 +368,10 @@ class MPController(Controller):
         if updated_gate:
             self.update_traj(obs,updated_gate)
             
+        if not np.array_equal(self.prev_obstacle,obs["obstacles_pos"]):
+            print('Obstacle has changed:')  
+            self.prev_obstacle=obs["obstacles_pos"]
 
-
-
-
-
-    
 
 
 
@@ -523,7 +521,7 @@ class MPController(Controller):
 
         for i, idx in self.gate_map.items(): # update the waypoints that correspond to a specific gate
             diff=self.prev_gates[i]-self.init_gates[i]
-            self.waypoints[idx] += diff
+            self.waypoints[idx] += diff*1.2
 
         gate_idx = updated_gate-1 # Subtract the one we added in check_for_update because of if statement
         center_idx = self.gate_map[int(gate_idx)]

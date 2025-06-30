@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
-
+import mujoco
 import fire
 import gymnasium
 from gymnasium.wrappers.jax_to_numpy import JaxToNumpy
@@ -23,7 +23,7 @@ rgba_2=np.array([0,0,1,1])
 rgba_3=np.array([0,1,0,1])
 rgba_4=np.array([1,1,0,1])
 
-from lsy_drone_racing.utils import load_config, load_controller,draw_line
+from lsy_drone_racing.utils import load_config, load_controller,draw_line, draw_tunnel
 
 if TYPE_CHECKING:
     from ml_collections import ConfigDict
@@ -90,8 +90,14 @@ def simulate(
 
             action = controller.compute_control(obs, info)
             y_ref = np.array([y[8:11] for y in controller.y])
+            z_values = [0.2,0.4,0.6,0.8]
+            r = np.array([0.15]*4)
+            obs1_points = [np.array([controller.y[0][0], controller.y[0][1], z]) for z in z_values]
+            obs2_points = [np.array([controller.y[0][2], controller.y[0][3], z]) for z in z_values]
+            obs3_points = [np.array([controller.y[0][4], controller.y[0][5], z]) for z in z_values]
+            obs4_points = [np.array([controller.y[0][6], controller.y[0][7], z]) for z in z_values]
             y_mpc=np.array([y[:3] for y in controller.y_mpc])
-            
+            #radii   = np.array([y[-1]   for y in controller.y])
             obs, reward, terminated, truncated, info = env.step(action)
             # Update the controller internal state and models.
             controller_finished = controller.step_callback(
@@ -105,9 +111,17 @@ def simulate(
                 if ((i * fps) % config.env.freq) < fps:
                     draw_line(env=env,points=controller.traj_vis.T,rgba=rgba_2)
                     draw_line(env=env,points=y_mpc,rgba=rgba_1)
-                    draw_line(env=env,points=y_ref,rgba=rgba_3)
+                    #draw_line(env=env,points=y_ref,rgba=rgba_3)
                     draw_line(env=env,points=controller.update_traj_vis.T,rgba=rgba_4)
+                    #draw_tunnel(env=env,centers=y_ref,radii=radii,rgba=rgba_1) # ref tunnel
+                    #draw_tunnel(env=env,centers=obs1_points,radii=r,rgba=rgba_1) # obs_1 tunnel
+                    #draw_tunnel(env=env,centers=obs2_points,radii=r,rgba=rgba_1) # obs_1 tunnel
+                    #draw_tunnel(env=env,centers=obs3_points,radii=r,rgba=rgba_1) # obs_1 tunnel
+                    #draw_tunnel(env=env,centers=obs4_points,radii=r,rgba=rgba_1) # obs_1 tunnel
                     env.render()
+                if i == 1:
+                    viewer = env.unwrapped.sim.viewer.viewer
+                    viewer.vopt.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = True
             i += 1
 
         controller.episode_callback()  # Update the controller internal state and models.

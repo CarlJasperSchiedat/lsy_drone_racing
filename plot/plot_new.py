@@ -100,19 +100,19 @@ waypoints = np.array(
              [1.0, 1.5, 0.05],  # Original Punkt 0
                 [0.95, 1.0, 0.2],   # Original Punkt 1
                 [0.8, 0.3, 0.35], # Neu (Mitte zwischen 1 und 2)
-                [0.65, -0.2, 0.5], # Original Punkt 2 (gate 0)
+                [0.7, -0.2, 0.5], # Original Punkt 2 (gate 0)
                 [0.12, -0.9, 0.575], # Neu (Mitte zwischen 2 und 3)
                 [0.1, -1.5, 0.65],  # Original Punkt 3
-                [0.75, -1.3, 0.9], # Neu (Mitte zwischen 3 und 4)
-                [1.1, -0.85, 1.15], # Original Punkt 4 (gate 1)
-                [0.65, -0.175, 0.9], # Neu (Mitte zwischen 4 und 5)
-                [0.1, 0.45, 0.5],   
-                [0.0, 1.2, 0.375],  # Original Punkt 6 (gate 2)
-                [0.0, 1.2, 1.1],    # Original Punkt 7
+                [0.85, -1.4, 0.9], # Neu (Mitte zwischen 3 und 4)
+                [1.15, -0.8, 1.15], # Original Punkt 4 (gate 1)
+                [0.65, -0.175, 0.85], # Neu (Mitte zwischen 4 und 5)
+                [0.1, 0.45, 0.45],#[0.1, 0.45, 0.55],   
+                [0.0, 1.25, 0.375],#[0.0, 1.2, 0.425],  # Original Punkt 6 (gate 2)
+                [0.0, 1.25, 1.1],    # Original Punkt 7
                 [-0.15, 0.6, 1.1],  # Neu (Mitte zwischen 7 und 8)
                 [-0.5, 0.0, 1.1],   # Original Punkt 8 (gate 3)
-                [-0.9, -0.5, 1.1],  # Original Punkt 9
-                [-1.7, -1.0, 1.1],  # Original Punkt 10,
+                [-1, -0.5, 1.1],#[-0.8, -0.5, 1.1],  # Original Punkt 9
+                [-1.75, -1.0, 1.1],#[-1.4, -1.0, 1.1],#[-1.1, -1.0, 1.1],  # Original Punkt 10
             ])
 
 obstacles_positions = [

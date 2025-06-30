@@ -71,6 +71,9 @@ def export_quadrotor_ode_model() -> AcadosModel:
     #
     # Update the Mass of the Drone online -> bzw. only the corresponding parameter of the model
     params_acc_0 = MX.sym("params_acc_0")
+    # Prameters for the Tunnel-Constrains
+    p_tun_tan = MX.sym("y_ref_d", 3)     # Tunnel Tangente (x,y,z)
+    p_tun_r = MX.sym("tunnel_r")        # Breite (Radius)
 
     # define state and input vector
     states = vertcat(
@@ -114,7 +117,7 @@ def export_quadrotor_ode_model() -> AcadosModel:
 
 
     #Define params necessary for external cost function
-    params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref,params_acc_0)
+    params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref,params_acc_0,p_tun_tan,p_tun_r)
 
     # Initialize the nonlinear model for NMPC formulation
     model = AcadosModel()
@@ -126,9 +129,14 @@ def export_quadrotor_ode_model() -> AcadosModel:
     model.p = params
 
   
-   
-    
+   # # # # # # Tunnel Constaints nach MPCC # # # # # # Add commentMore actions
+    err = vertcat(px, py, pz) - p_ref
+    err_par = (p_tun_tan.T @ err) * p_tun_tan
+    err_senk = err - err_par
+    h_tunnel  = (err_senk.T @ err_senk) - p_tun_r**2
 
+    model.con_h_expr = vertcat(h_tunnel)
+    
     # Penalize aggressive commands (smoother control)
     Q_control = 0.05
     control_penalty = df_cmd**2 + dr_cmd**2 + dp_cmd**2 + dy_cmd**2
@@ -138,15 +146,18 @@ def export_quadrotor_ode_model() -> AcadosModel:
     angle_penalty = roll**2 + pitch**2  # Yaw penalty optional
 
     sharpness=2
+    epsilon=1e-3
     #Penalising proximity to obstacles
     d1 = (px - p_obs1[0])**sharpness + (py - p_obs1[1])**sharpness
     d2 = (px - p_obs2[0])**sharpness + (py - p_obs2[1])**sharpness
     d3 = (px - p_obs3[0])**sharpness + (py - p_obs3[1])**sharpness
     d4 = (px - p_obs4[0])**sharpness + (py - p_obs4[1])**sharpness
-    safety_margin = 0.015 # Min allowed distance squared
-    Q_obs=50 
-    obs_cost = (0*np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
-           0*np.exp(-d3/safety_margin) + np.exp(-d4/safety_margin))
+    safety_margin = 0.0000015 # Min allowed distance squared
+    Q_obs=0 
+    obs_cost = (np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
+           np.exp(-d3/safety_margin) + np.exp(-d4/safety_margin))
+    #obs_cost = Q_obs * (1/(d1 + epsilon) + 1/(d2 + epsilon) + 
+    #                1/(d3 + epsilon) + 1/(d4 + epsilon))
 
     #Penalising deviation from Reference trajectory #1
     Q_pos = 10.0  
@@ -200,6 +211,10 @@ def create_ocp_solver(
     nx = model.x.rows()
     ocp.constraints.x0 = np.zeros((nx))
 
+    # Non-linear Tunnel ConstraintsAdd commentMore actions
+    ocp.dims.nh = 1
+    ocp.constraints.lh = np.array([-100000])
+    ocp.constraints.uh = np.array([0.0])
 
 
 
@@ -320,7 +335,7 @@ class MPController(Controller):
         self.traj_vis=np.array([x,y,z])
         self.update_traj_vis=np.array([x,y,z])
         #
-        des_completion_time = 6
+        des_completion_time = 5.3
         ts = np.linspace(0, 1, int(self.freq * des_completion_time))
 
 
@@ -351,6 +366,12 @@ class MPController(Controller):
         self.finished = False
         self.params_acc_0_hat = 20.907574256269616 # params_acc[0] ≈ k_thrust / m_nominal ; nominal value given for nominal_mass = 0.027
         self.vz_prev = 0.0 # estimated velocity at start = 0
+        
+        
+        self.tunnel_width = 0.3 # Tunnel width (radius) for the MPC Tunnel constraintsAdd commentMore actions
+        self.tunnel_w_gate = 0.17 # Tunnel width at the gate
+        self.tunnel_trans = 0.6 # Distance at which the tunnel width transitions from gate width to far width
+
 
 
     def compute_control(
@@ -373,7 +394,9 @@ class MPController(Controller):
             self.update_traj(obs,updated_gate)
             
 
-
+        if not np.array_equal(self.prev_obstacle,obs["obstacles_pos"]):
+            print('Obstacle has changed:')  
+            self.prev_obstacle=obs["obstacles_pos"]
 
 
 
@@ -403,16 +426,35 @@ class MPController(Controller):
         self.y=[]
         for j in range(self.N):
             
-            yref = np.hstack([ # params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, m)
-                self.prev_obstacle[:, :2].flatten(),
-                self.x_des[i + j],
-                self.y_des[i + j],
-                self.z_des[i + j],
-                self.params_acc_0_hat,
-                ])
+            y_ref = np.array([ self.x_des[i + j], self.y_des[i + j], self.z_des[i + j] ])
 
+            # # Help-Parameters for the Tunnel Constraints
+            y_ref_p1 = np.array([ self.x_des[i + j + 1], self.y_des[i + j + 1], self.z_des[i + j + 1] ])
+            delta = np.array(y_ref_p1 - y_ref)
+            tangent_norm = delta / ( np.linalg.norm(delta) + 1e-6 )
+
+            tunnel_width = self._tunnel_radius(y_ref)
+
+            yref = np.hstack([ # params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, params_acc_0, p_tun_tan, p_tun_r)
+                self.prev_obstacle[:, :2].flatten(),
+                y_ref, 
+
+
+                self.params_acc_0_hat,
+                tangent_norm,
+                tunnel_width,
+                ])
+            
             self.acados_ocp_solver.set(j, "p", yref)
             self.y.append(yref)
+
+            # # Help-Parameters for the Tunnel ConstraintsAdd commentMore actions
+        y_ref = np.array([ self.x_des[i + self.N], self.y_des[i + self.N], self.z_des[i + self.N] ])
+        y_ref_p1 = np.array([ self.x_des[i + self.N + 1], self.y_des[i + self.N + 1], self.z_des[i + self.N + 1] ])
+        delta = np.array(y_ref_p1 - y_ref)
+        tangent_norm = delta / ( np.linalg.norm(delta) + 1e-6 )
+        tunnel_width = self._tunnel_radius(y_ref)
+
 
         yref_N = np.hstack([
             self.prev_obstacle[:, :2].flatten(),
@@ -420,6 +462,8 @@ class MPController(Controller):
             self.y_des[i + self.N],
             self.z_des[i + self.N],
             self.params_acc_0_hat,
+            tangent_norm,
+            tunnel_width,
         ])
         self.acados_ocp_solver.set(self.N, "p", yref_N)
         #### Obs avoidance
@@ -613,3 +657,15 @@ class MPController(Controller):
         alpha    = 0.02                                     # Glättung
         self.params_acc_0_hat = (1 - alpha) * self.params_acc_0_hat + alpha * params_acc_0
         # self.m_hat = k_thrust / self.k_hat                  # neue Massen-Schätzung -> nicht nötig
+
+    def _tunnel_radius(self, p_ref: np.ndarray) -> float:
+        """
+        ref_pt: np.array([x,y,z]) eines MPC-Knotens
+        """
+        # Entfernung zum nächsten Gate-Zentrum
+        d_gate = np.min(np.linalg.norm(self.prev_gates - p_ref, axis=1))
+
+        # lineare Interpolation zwischen R_gate und R_far 
+        alpha = np.clip(d_gate / self.tunnel_trans, 0.0, 1.0)
+
+        return self.tunnel_w_gate + (self.tunnel_width - self.tunnel_w_gate) * alpha
