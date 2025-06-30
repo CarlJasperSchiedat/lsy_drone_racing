@@ -577,7 +577,7 @@ class MPController(Controller):
         self.z_des[tick_min:tick_max + 1]  = z_new
 
 
-        print(f"✅ Neue Teiltrajektorie (Spline) um Gate {gate_idx} aktualisiert.")
+        print(f"✅ Neue Teiltrajektorie um Gate {gate_idx} aktualisiert.")
         
 
     def mass_estimator(self, obs):
