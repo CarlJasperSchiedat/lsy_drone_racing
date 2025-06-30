@@ -5,7 +5,7 @@ current state observations and desired waypoints.
 
 The waypoints are generated using cubic spline interpolation from a set of predefined waypoints.
 Note that the trajectory uses pre-defined waypoints instead of dynamically generating a good path.
-ATTACKE
+ATTACKE #2
 """
 
 from __future__ import annotations  # Python 3.10 type hints
