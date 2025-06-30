@@ -316,7 +316,7 @@ class MPController(Controller):
         self.traj_vis=np.array([x,y,z])
         self.update_traj_vis=np.array([x,y,z])
         #
-        self.des_completion_time = 5.2
+        self.des_completion_time = 5.12
         ts = np.linspace(0, 1, int(self.freq * self.des_completion_time))
         #ts = generate_nonuniform_ts(self.freq, self.des_completion_time)
 
