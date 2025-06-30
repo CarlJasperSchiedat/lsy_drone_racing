@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
+
 from casadi import DM
 import json
 import os
@@ -13,6 +14,7 @@ from optimizer import optimize_original, optimize_velocity_bounded
 
 
 def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_positions, gates_quat):
+
 
     def quaternion_to_rotation_matrix(q):
         x, y, z, w = q
@@ -31,13 +33,28 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
-    # Waypoints plotten
     waypoints = np.array(waypoints)
-    ax.plot(waypoints[:,0], waypoints[:,1], waypoints[:,2], 'bo-', label='Waypoints', markersize=2)
+    ax.plot(waypoints[:, 0], waypoints[:, 1], waypoints[:, 2], 'bo-', label='Waypoints', markersize=2)
+
+    # Optional: cubic spline Trajektorie
+    if show_spline:
+        ts = np.linspace(0, 1, len(waypoints))
+        cs_x = CubicSpline(ts, waypoints[:, 0])
+        cs_y = CubicSpline(ts, waypoints[:, 1])
+        cs_z = CubicSpline(ts, waypoints[:, 2])
+
+        t_fine = np.linspace(0, 1, 200)
+        spline_x = cs_x(t_fine)
+        spline_y = cs_y(t_fine)
+        spline_z = cs_z(t_fine)
+
+        ax.plot(spline_x, spline_y, spline_z, 'g-', linewidth=2, label='Cubic Spline Trajectory')
+
 
     # Gates als rotierte Quadrate
     gate_size = 0.45 / 2
     gate_size_outer = gate_size + 0.1
+
     gate_color = (1, 0, 0, 0.5)
     gates_positions = np.array(gates_positions)
 
@@ -56,6 +73,7 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
         poly = Poly3DCollection([inner_square], color=gate_color, label='Gate' if i == 0 else "")
         ax.add_collection3d(poly)
 
+
         outer_square = np.array([
             [-gate_size_outer, 0, -gate_size_outer],
             [ gate_size_outer, 0, -gate_size_outer],
@@ -69,22 +87,42 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
     # Gate-Zentren markieren
     ax.scatter(gates_positions[:,0], gates_positions[:,1], gates_positions[:,2], c='r', s=50, label=None)
 
-    # Stäbe plotten (von z=0 bis z=1)
+
+    # Staves
     for idx, point in enumerate(obstacle_positions):
         ax.plot([point[0], point[0]], [point[1], point[1]], [0, 1],
                 linewidth=4, label='Staves' if idx == 0 else "")
 
-    # Achsenbeschriftung und Limits
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
-    ax.set_xlim(-1.5, 1.5)
-    ax.set_ylim(-2, 2)
-    ax.set_zlim(0, 2)
+
+    # Set axis limits to nearest multiples of 0.15 that cover the data
+    def get_grid_limits(data, step=0.15):
+        dmin = np.min(data)
+        dmax = np.max(data)
+        lower = step * np.floor(dmin / step)
+        upper = step * np.ceil(dmax / step)
+        return lower, upper
+
+    xlim = get_grid_limits(np.concatenate([waypoints[:,0], np.array(gates_positions)[:,0], np.array(obstacle_positions)[:,0]]))
+    ylim = get_grid_limits(np.concatenate([waypoints[:,1], np.array(gates_positions)[:,1], np.array(obstacle_positions)[:,1]]))
+    zlim = get_grid_limits(np.concatenate([waypoints[:,2], np.array(gates_positions)[:,2], np.array(obstacle_positions)[:,2]]))
+
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_zlim(zlim)
+
+    # Set grid lines every 0.15
+    ax.set_xticks(np.arange(xlim[0], xlim[1]+0.001, 0.15))
+    ax.set_yticks(np.arange(ylim[0], ylim[1]+0.001, 0.15))
+    ax.set_zticks(np.arange(zlim[0], zlim[1]+0.001, 0.15))
 
     ax.legend()
-    ax.set_title('3D Waypoints mit Stäben und rotierbaren Gates')
+    ax.set_title('3D Waypoints mit Stäben, rotierbaren Gates' +
+                 (' und Spline-Trajektorie' if show_spline else ''))
     plt.show()
+
 
 
 
@@ -109,6 +147,7 @@ obstacles_positions = [
     [1.0, 0.0, 1.4],
     [0.5, -1.0, 1.4],
     [0., 1.5, 1.4],
+
     [-0.5, 0.5, 1.4],
 ]
 
@@ -125,6 +164,7 @@ gates_quat = [   # sind als rpy gegeben und nicht als Quaternion ??????? -> z.B.
     [0.0, 0.0, 0.0, 1.0],
     [0.0, 0.0, 1.0, 0.0],
 ]
+
 
 
 '''
@@ -200,3 +240,4 @@ output_path = os.path.join(output_dir, "opt__test.json")
 with open(output_path, "w") as f:
     json.dump(output_data, f, indent=2)
 print(f"✅ Optimierungsdaten gespeichert in: {output_path}")
+
