@@ -17,7 +17,7 @@ from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from casadi import MX, cos, sin, vertcat
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
-
+from lsy_drone_racing.utils.utils import generate_nonuniform_ts
 from lsy_drone_racing.control import Controller
 
 if TYPE_CHECKING:
@@ -137,16 +137,16 @@ def export_quadrotor_ode_model() -> AcadosModel:
     Q_angle = 0.05
     angle_penalty = roll**2 + pitch**2  # Yaw penalty optional
 
-    sharpness=8
+    sharpness=2
     #Penalising proximity to obstacles
     d1 = (px - p_obs1[0])**sharpness + (py - p_obs1[1])**sharpness
     d2 = (px - p_obs2[0])**sharpness + (py - p_obs2[1])**sharpness
     d3 = (px - p_obs3[0])**sharpness + (py - p_obs3[1])**sharpness
     d4 = (px - p_obs4[0])**sharpness + (py - p_obs4[1])**sharpness
-    safety_margin = 0.000002 # Min allowed distance squared
-    Q_obs=0 
-    obs_cost = (0.25*np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
-           np.exp(-d3/safety_margin) + 0.5*np.exp(-d4/safety_margin))
+    safety_margin = 0.015 # Min allowed distance squared
+    Q_obs=50 
+    obs_cost = (0*np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
+           0*np.exp(-d3/safety_margin) + np.exp(-d4/safety_margin))
 
     #Penalising deviation from Reference trajectory #1
     Q_pos = 10.0  
@@ -268,25 +268,21 @@ class MPController(Controller):
         '''
         self.waypoints= np.array([
                 [1.0, 1.5, 0.05],  # Original Punkt 0
-                #[0.9, 1.25, 0.125], # Neu (Mitte zwischen 0 und 1)
-                [0.87, 1.0, 0.2],#[0.8, 1.0, 0.2],    # Original Punkt 1
-                [0.75, 0.35, 0.35],#[0.675, 0.35, 0.35], # Neu (Mitte zwischen 1 und 2)
-                [0.57, -0.3, 0.5],#[0.5, -0.3, 0.5],#[0.55, -0.3, 0.5],  # Original Punkt 2 (gate 0)
-                [0.23, -0.9, 0.575],#[0.3, -0.9, 0.575],#[0.325, -0.9, 0.575], # Neu (Mitte zwischen 2 und 3)
+                [0.95, 1.0, 0.2],   # Original Punkt 1
+                [0.8, 0.3, 0.35], # Neu (Mitte zwischen 1 und 2)
+                [0.7, -0.2, 0.5],#[0.65, -0.2, 0.5], # Original Punkt 2 (gate 0)
+                [0.12, -0.9, 0.575], # Neu (Mitte zwischen 2 und 3)
                 [0.1, -1.5, 0.65],  # Original Punkt 3
-                [0.75, -1.3, 0.9],#[0.6, -1.175, 0.9], # Neu (Mitte zwischen 3 und 4)
-                [1.1, -0.85, 1.15], # Original Punkt 4 (gate 1)
-                [0.65, -0.175, 0.9], # Neu (Mitte zwischen 4 und 5)
-                [0.1, 0.45, 0.55],#[0.1, 0.45, 0.65], #[0.2, 0.5, 0.65],   
-                [0.0, 1.2, 0.425],#[0.0, 1.2, 0.525],  # Original Punkt 6 (gate 2)
-                #[0.0, 1.2, 0.8125], # Neu (Mitte zwischen 6 und 7)
-                [0.0, 1.2, 1.1],    # Original Punkt 7
+                [0.9, -1.4, 0.9],#[0.8, -1.35, 0.9],#[0.75, -1.3, 0.9], # Neu (Mitte zwischen 3 und 4)
+                 [1.2, -0.8, 1.15],#[1.15, -0.8, 1.15],#[1.1, -0.85, 1.15], # Original Punkt 4 (gate 1)
+                [0.65, -0.175, 0.85], # Neu (Mitte zwischen 4 und 5)
+                [0.0, 0.4, 0.45],#[0.1, 0.45, 0.45],#[0.1, 0.45, 0.55],   
+                [0.0, 1.32, 0.375],#[0.0, 1.28, 0.375],#[0.0, 1.2, 0.375],#[0.0, 1.2, 0.425],  # Original Punkt 6 (gate 2)
+                [0.0, 1.32, 1.1],#[0.0, 1.28, 1.1], #[0.0, 1.2, 1.1],    # Original Punkt 7
                 [-0.15, 0.6, 1.1],  # Neu (Mitte zwischen 7 und 8)
                 [-0.5, 0.0, 1.1],   # Original Punkt 8 (gate 3)
-                #[-0.5, -0.25, 1.1], # Neu (Mitte zwischen 8 und 9)
-                [-0.5, -0.5, 1.1],  # Original Punkt 9
-                #[-0.5, -0.75, 1.1], # Neu (Mitte zwischen 9 und 10)
-                [-0.5, -1.0, 1.1],  # Original Punkt 10
+                [-0.92, -0.5, 1.1],#[-0.9, -0.5, 1.1],#[-0.8, -0.5, 1.1],  # Original Punkt 9
+                [-1.6, -1.0, 1.1],#[-1.4, -1.0, 1.1],#[-1.1, -1.0, 1.1],  # Original Punkt 10
             ])
         self.gate_map = {
             0 : 3,
@@ -320,12 +316,12 @@ class MPController(Controller):
         self.traj_vis=np.array([x,y,z])
         self.update_traj_vis=np.array([x,y,z])
         #
-        des_completion_time = 6.3
-        ts = np.linspace(0, 1, int(self.freq * des_completion_time))
+        self.des_completion_time = 6 #5.1
+        ts = np.linspace(0, 1, int(self.freq * self.des_completion_time))
+        #ts = generate_nonuniform_ts(self.freq, self.des_completion_time)
 
 
-
-        ticks_per_segment = int(self.freq * des_completion_time) / (len(self.waypoints) - 1)
+        ticks_per_segment = int(self.freq * self.des_completion_time) / (len(self.waypoints) - 1)
         self.ticks = np.round(np.arange(0, len(self.waypoints)) * ticks_per_segment).astype(int)
 
 
@@ -372,7 +368,9 @@ class MPController(Controller):
         if updated_gate:
             self.update_traj(obs,updated_gate)
             
-
+        if not np.array_equal(self.prev_obstacle,obs["obstacles_pos"]):
+            print('Obstacle has changed:')  
+            self.prev_obstacle=obs["obstacles_pos"]
 
 
 
@@ -503,7 +501,7 @@ class MPController(Controller):
             prev_gate = np.asarray(self.prev_gates[gate_idx])
             current_gate = np.asarray(current_gates[gate_idx])
             
-            if np.linalg.norm(prev_gate - current_gate) > 0.12:  # Threshold
+            if np.linalg.norm(prev_gate - current_gate) > 0.05:  # Threshold
                 self.prev_gates = current_gates.copy()  # Update stored positions
                 print(f"Gate {gate_idx} moved significantly.")
                 print(self.prev_gates[gate_idx])
@@ -523,7 +521,7 @@ class MPController(Controller):
 
         for i, idx in self.gate_map.items(): # update the waypoints that correspond to a specific gate
             diff=self.prev_gates[i]-self.init_gates[i]
-            self.waypoints[idx] += diff
+            self.waypoints[idx] += diff*1.2
 
         gate_idx = updated_gate-1 # Subtract the one we added in check_for_update because of if statement
         center_idx = self.gate_map[int(gate_idx)]
