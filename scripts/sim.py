@@ -108,10 +108,14 @@ def simulate(
                     draw_line(env=env,points=y_mpc,rgba=rgba_1) # optimized MPC trajectory
                     draw_line(env=env,points=controller.traj_vis.T,rgba=rgba_2) # nominal trajectory
                     draw_line(env=env,points=controller.update_traj_vis.T,rgba=rgba_4) # updated trajectory segment
-                    
-                    draw_line(env=env,points=y_ref,rgba=rgba_3, min_size=6.0,max_size=6.0) # green MPC line -> reference trajectory
 
-                    draw_tunnel(env=env,centers=y_ref,radii=radii,rgba=rgba_1) # MPC tunnel
+                    try:
+                        draw_line(env=env,points=y_ref,rgba=rgba_3, min_size=6.0,max_size=6.0) # green MPC line -> reference trajectory
+                    except Exception as e:
+                        logger.error(f"Error drawing MPC line: {e} \nExpend the refence trajectory")
+
+                    if controller.set_tunnel:  # only draw tunnel if it is set
+                        draw_tunnel(env=env,centers=y_ref,radii=radii,rgba=rgba_1) # MPC tunnel
 
                     env.render()
                 if i == 1:

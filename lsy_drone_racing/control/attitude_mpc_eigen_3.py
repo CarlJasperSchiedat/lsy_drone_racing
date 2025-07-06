@@ -430,7 +430,7 @@ class MPController(Controller):
         
         
         
-        # Update Gates ?
+        # Is Update Gates nessessary ?
         updated_gate = self.check_for_update_2(obs)
         if updated_gate:
             self.update_traj(obs,updated_gate)
