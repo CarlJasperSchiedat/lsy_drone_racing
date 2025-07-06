@@ -5,7 +5,7 @@ import numpy as np
 import scipy.linalg
 from acados_template import AcadosOcp, AcadosOcpSolver
 
-from lsy_drone_racing.control.attitude_mpc import export_quadrotor_ode_model
+from lsy_drone_racing.control.attitude_mpc import export_quadrotor_ode_model  # type: ignore
 
 # Setze ACADOS Pfad korrekt
 os.environ["ACADOS_SOURCE_DIR"] = "C:/Users/conda/repos/lsy_drone_racing/acados"
