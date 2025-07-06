@@ -1,10 +1,13 @@
+"""This module runs multiple simulations of the drone racing environment."""
+
 import random
 import time
+
 from sim import simulate
 
 
-
 def run_multiple_simulations():
+    """Runs multiple simulations at Level 2."""
     # Run the simulation 10 times
     finished_counter = 0
 

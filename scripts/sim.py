@@ -13,24 +13,29 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import mujoco
 import fire
 import gymnasium
-from gymnasium.wrappers.jax_to_numpy import JaxToNumpy
+import mujoco
 import numpy as np
+from gymnasium.wrappers.jax_to_numpy import JaxToNumpy
 
-rgba_1 = np.array([1.0, 0, 0, 1.0])  # Red, fully opaque
-rgba_2=np.array([0,0,1,1])
-rgba_3=np.array([0,1,0,1])
-rgba_4=np.array([1,1,0,1])
-
-from lsy_drone_racing.utils import load_config, load_controller, draw_line, draw_tunnel
+from lsy_drone_racing.utils import draw_line, draw_tunnel, load_config, load_controller
 
 if TYPE_CHECKING:
     from ml_collections import ConfigDict
 
     from lsy_drone_racing.control.controller import Controller
     from lsy_drone_racing.envs.drone_race import DroneRaceEnv
+
+
+
+
+rgba_1 = np.array([1.0, 0, 0, 1.0])  # Red, fully opaque
+rgba_2=np.array([0,0,1,1])
+rgba_3=np.array([0,1,0,1])
+rgba_4=np.array([1,1,0,1])
+
+
 
 
 logger = logging.getLogger(__name__)

@@ -1,20 +1,27 @@
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-import numpy as np
-from casadi import DM
+"""This module optimizes the trajectory and plots it."""
+
 import json
 import os
 
-# from optimal_traj_2gates import optimize_waypoint_positions
-# from optimal_trajectory import optimize_waypoint_pos_and_num
-from optimizer_help_func import optimize_full_trajectory_random, optimize_from_given_N_list_random
-from optimizer import optimize_original, optimize_velocity_bounded
+import matplotlib.pyplot as plt
+import numpy as np
+
+#from casadi import DM
+#from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from optimizer_help_func import optimize_from_given_N_list_random
+
+#from optimizer import optimize_original, optimize_velocity_bounded
+#from optimal_traj_2gates import optimize_waypoint_positions
+#from optimal_trajectory import optimize_waypoint_pos_and_num
+#from optimizer_help_func import optimize_full_trajectory_random
 
 
-def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_positions, gates_quat):
+def plot_waypoints_and_environment(waypoints: np.ndarray, obstacle_positions: np.ndarray, gates_positions: np.ndarray, gates_quat: np.ndarray) -> None:
+    """Plots the waypoints, obstacles, and gates in a 3D environment."""
 
-    def quaternion_to_rotation_matrix(q):
+    def quaternion_to_rotation_matrix(q: np.ndarray) -> np.ndarray:
+        """Convert a quaternion into a rotation matrix."""
         x, y, z, w = q
         R = np.array([
             [1-2*(y**2+z**2),  2*(x*y - z*w),    2*(x*z + y*w)],
@@ -23,7 +30,8 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
         ])
         return R
     
-    def rotate_and_translate(square, R, gate):
+    def rotate_and_translate(square: np.ndarray, R: np.ndarray, gate: np.ndarray) -> np.ndarray:
+        """Rotate and translate a square defined in the XY-plane."""
         return (R @ square.T).T + gate
 
 
@@ -157,7 +165,7 @@ extended_gates_quat = [[0, 0, 0, 0]] + gates_quat # der erste Eintrag wird nicht
 # gates = [start_pos, gates_positions[0], gates_positions[1]]
 
 
-# X_opt, N_opt = optimize_full_trajectory_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, t_min=10, t_max=18, step=1, random_iteraitions=10)
+# X_opt, N_opt = optimize_full_trajectory_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, t_min=10, t_max=18, random_iteraitions=10, step=1)
 
 # N_list = [72, 99, 73, 106]
 # X_opt, N_opt = optimize_waypoint_positions(extended_gates, extended_gates_quat, N_list, obstacles_positions, start_vel, velocity_gate4, dt=1/50)

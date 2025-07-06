@@ -1,9 +1,16 @@
+"""Helpers for trajectory optimization in drone racing environments.
+
+Exports a quadrotor model and provides functions to optimize trajectories.
+"""
+
 import numpy as np
-from casadi import MX, Function, DM, vertcat, cos, sin, exp, inf, sumsqr, nlpsol, dot, norm_2, fmax, fabs, fmin
+from acados_template import AcadosModel
+from casadi import DM, MX, Function, cos, dot, exp, fabs, fmax, fmin, nlpsol, sin, sumsqr, vertcat
 from scipy.spatial.transform import Rotation as R
 
 
-def export_quadrotor_ode_model():
+def export_quadrotor_ode_model() -> AcadosModel:
+    """Symbolic Quadrotor Model."""
     # Define Drone Model
 
     # Define Gravitational Acceleration
@@ -86,8 +93,20 @@ def export_quadrotor_ode_model():
     return f_func, states.size1(), inputs.size1()
 
 
-def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1/50):
 
+
+def optimize_original(gates: np.ndarray, gates_quat: np.ndarray, N_list: np.ndarray, obstacles: np.ndarray, v_start: np.ndarray, v_end: np.ndarray, dt: float=1/50) -> tuple:
+    """Creates an acados Optimal Control Problem and Solver.
+     
+    Args:
+        gates: Liste der Gate-Positionen, jedes [x, y, z].
+        gates_quat: Liste der Gate-Orientierungen als Quaternionen.
+        N_list: Liste der Anzahl der Schritte pro Segment zwischen den Gates.
+        obstacles: Liste der Hindernis-Positionen, jedes [x, y, z].
+        v_start: Startgeschwindigkeit des Drohnenfluges.
+        v_end: Endgeschwindigkeit des Drohnenfluges.
+        dt: time step in seconds.
+    """
     # drone model
     f_func, nx, nu = export_quadrotor_ode_model()
 
@@ -312,17 +331,18 @@ def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1
 
 
 
-
-
-
-
-
-
-
-
-
-def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1/50):
-
+def optimize_velocity_bounded(gates: np.ndarray, gates_quat: np.ndarray, N_list: np.ndarray, obstacles: np.ndarray, v_start: np.ndarray, v_end: np.ndarray, dt: float=1/50) -> tuple:
+    """Creates an acados Optimal Control Problem and Solver with the allowed velocity bounded.
+     
+    Args:
+        gates: Liste der Gate-Positionen, jedes [x, y, z].
+        gates_quat: Liste der Gate-Orientierungen als Quaternionen.
+        N_list: Liste der Anzahl der Schritte pro Segment zwischen den Gates.
+        obstacles: Liste der Hindernis-Positionen, jedes [x, y, z].
+        v_start: Startgeschwindigkeit des Drohnenfluges.
+        v_end: Endgeschwindigkeit des Drohnenfluges.
+        dt: time step in seconds.
+    """
     # drone model
     f_func, nx, nu = export_quadrotor_ode_model()
 

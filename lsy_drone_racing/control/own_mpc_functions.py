@@ -10,16 +10,13 @@ Note that the trajectory uses pre-defined waypoints instead of dynamically gener
 
 from __future__ import annotations  # Python 3.10 type hints
 
-import numpy as np
-import scipy
-from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-from casadi import MX, cos, sin, vertcat, mtimes, reshape, fabs, exp
-from scipy.spatial.transform import Rotation as R
-
-
-
 import os
 import platform
+
+import numpy as np
+from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
+from casadi import MX, cos, reshape, sin, vertcat
+
 # Workaround für acados auf Windows – sorgt dafür, dass Kompilierung klappt
 os.environ["CC"] = "gcc"
 os.environ["LD"] = "gcc"
@@ -27,7 +24,14 @@ os.environ["RM"] = "del"
 
 
 def rename_acados_dll(name: str):
-    """Rename the acados DLL on Windows if needed."""
+    """Workaround für acados auf Windows - sorgt dafür, dass Kompilierung klappt.
+            
+    Args:
+        name: Name of the .ddl that has to be changed.
+
+    Returns:
+        None
+    """
     if platform.system().lower() != "windows":
         return  # Nur unter Windows notwendig
 
@@ -405,8 +409,6 @@ def create_ocp_solver_for_recompute(
 
 
     # Get Dimensions
-    nx = model.x.rows()
-    nu = model.u.rows()
     np_param = model.p.rows()
     ocp.dims.np = np_param
     ocp.parameter_values = np.zeros(np_param)

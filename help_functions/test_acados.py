@@ -1,9 +1,10 @@
-from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-from casadi import MX, vertcat
-import numpy as np
-
+"""This script tests the installation of acados by creating a simple OCP and solving it."""
 
 import os
+
+import numpy as np
+from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
+from casadi import MX, vertcat
 
 # Windows-kompatible Umgebungsvariablen setzen
 os.environ["CC"] = "gcc"
@@ -12,7 +13,8 @@ os.environ["RM"] = "del"
 
 
 
-def export_test_model():
+def export_test_model() -> AcadosModel:
+    """Exports a simple test model for acados."""
     model = AcadosModel()
     model.name = "simple_test"
 
@@ -30,7 +32,8 @@ def export_test_model():
 
     return model
 
-def test_acados_installation():
+def test_acados_installation() -> None:
+    """Tests the acados installation by creating and solving a simple OCP."""
     # Create model and ocp object
     model = export_test_model()
     ocp = AcadosOcp()
@@ -40,8 +43,8 @@ def test_acados_installation():
     ocp.dims.N = 20
 
     # Cost: least-squares tracking to 0
-    Q = np.array([[1.0]])
-    R = np.array([[0.1]])
+    # Q = np.array([[1.0]])
+    # R = np.array([[0.1]])
     ocp.cost.cost_type = "LINEAR_LS"
     ocp.cost.cost_type_e = "LINEAR_LS"
     ocp.cost.Vx = np.array([[1.0], [0.0]])  # ny=2, nx=1

@@ -1,22 +1,24 @@
-"""
-HIER MUSS NOCH TEXT REIN
-"""
+"""This module implements various functions for a MPC using attitude control for a quadrotor."""
 
+import os
+import platform
 
 import numpy as np
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from casadi import MX, cos, sin, vertcat
 
-
-import os
-import platform
 os.environ["CC"] = "gcc"
 os.environ["LD"] = "gcc"
 os.environ["RM"] = "del"
 def rename_acados_dll(name: str):
-    # Workaround für acados auf Windows – sorgt dafür, dass Kompilierung klappt
-    """Rename the acados DLL on Windows if needed."""
+    """Workaround für acados auf Windows - sorgt dafür, dass Kompilierung klappt.
+            
+    Args:
+        name: Name of the .ddl that has to be changed.
 
+    Returns:
+        None
+    """
     if platform.system().lower() != "windows":
         return  # Nur unter Windows notwendig
 
@@ -39,8 +41,18 @@ def rename_acados_dll(name: str):
         print(f"🛠️ DLL renamed: {actual} ➝ {expected}")
 
 
+
+
 def export_quadrotor_ode_model(Q_all: np.ndarray, set_tunnel: bool = True) -> AcadosModel:
-    """Symbolic Quadrotor Model."""
+    """Symbolic Quadrotor Model.
+     
+    Args:
+        Q_all: All weights for the cost function in an array.
+        set_tunnel: If True, the model will include tunnel constraints.
+
+    Returns:
+        An AcadosModel
+    """
     # Define name of solver to be used in script
     model_name = "mpc_universal"
 
@@ -174,12 +186,22 @@ def export_quadrotor_ode_model(Q_all: np.ndarray, set_tunnel: bool = True) -> Ac
     return model
 
 
-
-
 def create_ocp_solver(
     Tf: float, N: int, Q_all: np.ndarray, set_tunnel: bool = True, verbose: bool = False
 ) -> tuple[AcadosOcpSolver, AcadosOcp]:
-    """Creates an acados Optimal Control Problem and Solver."""
+    """Creates an acados Optimal Control Problem and Solver.
+     
+    Args:
+        Tf: Time-Horizon of the MPC prediction in seconds.
+        N: Number of steps in the prediction horizon.
+        Q_all: All weights for the cost function in an array.
+        set_tunnel: If True, the model will include tunnel constraints.
+        verbose: If True, the solver will print additional information.
+
+    Returns:
+        - An AcadosOcpSolver instance for solving the MPC problem.
+        - An AcadosOcp instance representing the OCP.
+    """
     ocp = AcadosOcp()
 
     # set model

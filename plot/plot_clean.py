@@ -1,30 +1,37 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from scipy.spatial.transform import Rotation as R
+"""This module plots the trajectory in a clean env."""
+
 import json
 
-def quaternion_to_rotmat(q):
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from scipy.spatial.transform import Rotation as R
+
+
+def quaternion_to_rotmat(q: np.ndarray) -> np.ndarray:
+    """Convert a quaternion into a rotation matrix."""
     x, y, z, w = q
     return np.array([
         [1 - 2 * (y**2 + z**2),     2 * (x * y - z * w),     2 * (x * z + y * w)],
         [2 * (x * y + z * w),       1 - 2 * (x**2 + z**2),   2 * (y * z - x * w)],
         [2 * (x * z - y * w),       2 * (y * z + x * w),     1 - 2 * (x**2 + y**2)]
     ])
-def transform_square(square, R, t):
+def transform_square(square: np.ndarray, R: np.ndarray, t: np.ndarray) -> np.ndarray:
+    """Rotate and translate a square defined in the XY-plane."""
     return (R @ square.T).T + t
 
 
-def sample_trajectory(traj, step=20):
+def sample_trajectory(traj: np.ndarray, step: int=20) -> np.ndarray:
+    """Sample a trajectory by taking every nth point."""
     traj = np.asarray(traj)
     return traj[::step]
 
 
 
 
-def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_positions, gates_quat):
+def plot_waypoints_and_environment(waypoints: np.ndarray, obstacle_positions: np.ndarray, gates_positions: np.ndarray, gates_quat: np.ndarray) -> None:
     """Plottet Waypoints als Linie, rotierte Gates und vertikale Hindernisstangen in 3D."""
-
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
     
@@ -35,11 +42,10 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
 
     # Gates
     gate_size = 0.225
-    gate_outer = gate_size + 0.05
     gate_color = (1, 0, 0, 0.5)
 
     for i, (gate, quat) in enumerate(zip(gates_positions, gates_quat)):
-        R = quaternion_to_rotmat(quat)
+        #R = quaternion_to_rotmat(quat)
         '''
         for size, alpha in [(gate_size, 1.0), (gate_outer, 0.4)]:
             square = np.array([
@@ -94,17 +100,10 @@ def plot_waypoints_and_environment(waypoints, obstacle_positions, gates_position
     plt.show()
 
 
-def plot_waypoints_and_uncertainties(waypoints, obstacle_positions, gates_positions, gates_quat):    
+def plot_waypoints_and_uncertainties(waypoints: np.ndarray, obstacle_positions: np.ndarray, gates_positions: np.ndarray, gates_quat: np.ndarray) -> None:    
+    """Plots the waypoints, obstacles, and gates with uncertainties in a 3D environment."""
 
-    def quaternion_to_rotmat(q):
-        return R.from_quat(q).as_matrix()
-
-    def transform_square(square, R, t):
-        return (R @ square.T).T + t
-
-
-
-    def draw_gate(ax, center, rot, alpha=0.15, label=None):
+    def draw_gate(ax: "matplotlib.axes.Axes", center: np.ndarray, rot: np.ndarray, alpha: float = 0.15, label: str | None = None) -> None:
         gate_size = 0.225
         square = np.array([
             [-gate_size, 0, -gate_size],
@@ -120,7 +119,7 @@ def plot_waypoints_and_uncertainties(waypoints, obstacle_positions, gates_positi
 
 
 
-    def draw_cylinder(ax, center, radius, height, alpha=0.1, color="gray"):
+    def draw_cylinder(ax: "matplotlib.axes.Axes", center: np.ndarray, radius: float, height: float, alpha: float=0.1, color:str="gray"):
         x0, y0 = center[:2]
         z = np.linspace(0, height, 10)
         theta = np.linspace(0, 2 * np.pi, 30)
@@ -171,8 +170,8 @@ def plot_waypoints_and_uncertainties(waypoints, obstacle_positions, gates_positi
     plt.show()
 
 
-def plot_waypoints_comparison(old_traj, new_traj, obstacle_positions, gates_positions, gates_quat):
-
+def plot_waypoints_comparison(old_traj: np.ndarray, new_traj: np.ndarray, obstacle_positions: np.ndarray, gates_positions: np.ndarray, gates_quat: np.ndarray) -> None:
+    """Plots the old and new trajectories in a 3D environment with gates and obstacles."""
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
     ax.view_init(elev=50, azim=225)
@@ -185,7 +184,6 @@ def plot_waypoints_comparison(old_traj, new_traj, obstacle_positions, gates_posi
 
     # Gates
     gate_size = 0.225
-    gate_outer = gate_size + 0.05
     gate_color = (1, 0, 0, 0.5)
 
     for i, (gate, quat) in enumerate(zip(gates_positions, gates_quat)):
@@ -222,8 +220,8 @@ def plot_waypoints_comparison(old_traj, new_traj, obstacle_positions, gates_posi
     plt.show()
 
 
-def plot_waypoints_with_sampling(full_traj, step, obstacle_positions, gates_positions, gates_quat):
-
+def plot_waypoints_with_sampling(full_traj: np.ndarray, step: int, obstacle_positions: np.ndarray, gates_positions: np.ndarray, gates_quat: np.ndarray) -> None:
+    """Plots the full trajectory with sampled waypoints, gates, and obstacles in a 3D environment."""
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
     ax.view_init(elev=50, azim=225)
@@ -280,7 +278,8 @@ def plot_waypoints_with_sampling(full_traj, step, obstacle_positions, gates_posi
     plt.show()
 
 
-def plot_sampled_waypoints_with_highlight(traj, step, highlight_range, obstacle_positions, gates_positions, gates_quat):
+def plot_sampled_waypoints_with_highlight(traj: np.ndarray, step: int, highlight_range: np.ndarray, obstacle_positions: np.ndarray, gates_positions: np.ndarray, gates_quat: np.ndarray) -> None:
+    """Plots the sampled waypoints from a trajectory with highlighted points in a 3D environment."""
     traj = np.asarray(traj)
     sampled = traj[::step]
 

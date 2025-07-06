@@ -1,11 +1,14 @@
-import numpy as np
+"""Plots the gate cost function in a 3D space with alpha values based on the cost."""
+from typing import Optional, Tuple
+
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+import numpy as np
 from matplotlib import colors as mcolors
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
 
-
-def gate_cost(rel_x, rel_y, rel_z, border=0.225):
+def gate_cost(rel_x: float, rel_y: float, rel_z: float, border: float=0.225) -> np.ndarray:
+    """Berechnet die Gate-Kosten basierend auf der relativen Position zu einem Gate."""
     y_weight = np.exp(-100 * ((rel_y / 1.0) ** 2))
     # x_borderdist_cost = np.exp(-150 * (((np.abs(rel_x) - border - 0.05) / 2.0) ** 2))
     # z_borderdist_cost = np.exp(-150 * (((np.abs(rel_z) - border - 0.05) / 2.0) ** 2))
@@ -22,7 +25,7 @@ def gate_cost(rel_x, rel_y, rel_z, border=0.225):
 
 
 
-def random_points(num_samples, x_range, y_range, z_range):
+def random_points(num_samples: int, x_range: tuple[float, float], y_range: tuple[float, float], z_range: tuple[float, float]) -> np.ndarray:
     """Erzeugt Punkte in jeweils eigenem Intervall für x, y, z."""
     x = np.random.uniform(*x_range, size=num_samples)
     y = np.random.uniform(*y_range, size=num_samples)
@@ -33,6 +36,7 @@ def random_points(num_samples, x_range, y_range, z_range):
 
 
 def regular_grid_points(n_per_axis: int, x_range: tuple[float, float], y_range: tuple[float, float], z_range: tuple[float, float]) -> np.ndarray:
+    """Erzeugt ein regelmäßiges Gitter von Punkten im 3D-Raum."""
     xs = np.linspace(*x_range, n_per_axis)
     ys = np.linspace(*y_range, n_per_axis)
     zs = np.linspace(*z_range, n_per_axis)
@@ -42,7 +46,8 @@ def regular_grid_points(n_per_axis: int, x_range: tuple[float, float], y_range: 
 
 
 
-def square_corners(b):
+def square_corners(b: float) -> np.ndarray:
+    """Erzeugt die Ecken eines Quadrats im x-z-Ebene bei y=0."""
     return np.array(
         [
             [-b, 0.0, -b],
@@ -57,13 +62,14 @@ def square_corners(b):
 
 
 def plot_gate_cost_alpha_gate(
-    num_samples=None,
-    n_per_axis=None,
-    border=0.225,
-    x_range=(-0.7, 0.7),
-    y_range=(-0.5, 0.25),
-    z_range=(-0.7, 0.7),
-):
+    num_samples: Optional[int] = None,
+    n_per_axis: Optional[int] = None,
+    border: float=0.225,
+    x_range: Tuple[float, float]=(-0.7, 0.7),
+    y_range: Tuple[float, float]=(-0.5, 0.25),
+    z_range: Tuple[float, float]=(-0.7, 0.7),
+) -> None:
+    """Plottet die Gate-Kosten in einem 3D-Raum mit Alpha-Werten basierend auf den Kosten."""
     # Zufällige Punkte in einem Würfel
     if num_samples is not None and n_per_axis is not None:
         print("Warnung: Es wurden sowohl num_samples als auch n_per_axis angegeben - Verwende Gitter.")

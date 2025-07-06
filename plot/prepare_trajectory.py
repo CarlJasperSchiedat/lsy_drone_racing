@@ -1,19 +1,21 @@
+"""Prepares waypoints as a sampled trajectory from an optimized solution and plots it."""
 import json
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 
 
-def prepare_trajectory_from_solution(X_opt, N_list, stepsize=10, exclude_gate_window=5):
-    """
-    Erstellt aus einer optimierten Trajektorie eine geglättete Waypoint-Trajektorie mit festen Abständen.
+def prepare_trajectory_from_solution(X_opt: np.ndarray, N_list: np.ndarray, stepsize: int=10, exclude_gate_window: int=5) -> tuple:
+    """Erstellt aus einer optimierten Trajektorie eine geglättete Waypoint-Trajektorie mit festen Abständen.
 
     Args:
         X_opt (np.ndarray): Optimierte Zustände der Trajektorie, Form = (N_total + 1, state_dim)
         N_list (list[int]): Schrittanzahl pro Segment zwischen Gates
         stepsize (int): Schrittgröße für gleichmäßige Abtastung (z. B. alle 10 Ticks)
-
+        exclude_gate_window: Fenstergröße, um Ticks in der Nähe von Gates zu vermeiden
+        
     Returns:
-        Tuple[np.ndarray, list[int]]:
+        Tuple:
             - Abgetastete Waypoints (M x 3)
             - Ticks/Indizes der Waypoints (Liste von ints)
     """
@@ -57,9 +59,8 @@ def prepare_trajectory_from_solution(X_opt, N_list, stepsize=10, exclude_gate_wi
     return waypoints, ticks, gate_idx_map
 
 
-def extend_trajectory(waypoints, ticks, X_opt, n_extra=5, spacing=10, dt=1/50):
-    """
-    Verlängert die Trajektorie nach dem letzten Waypoint in Richtung der Endgeschwindigkeit.
+def extend_trajectory(waypoints: np.ndarray, ticks: np.ndarray, X_opt: np.ndarray, n_extra: int=5, spacing: int=10, dt: float=1/50) -> tuple:
+    """Verlängert die Trajektorie nach dem letzten Waypoint in Richtung der Endgeschwindigkeit.
 
     Args:
         waypoints (np.ndarray): Alle Waypoints der Trajektorie.

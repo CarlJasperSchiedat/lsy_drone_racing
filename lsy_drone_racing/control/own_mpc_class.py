@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
-from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 
 from lsy_drone_racing.control import Controller
 
@@ -22,9 +21,11 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 import json
-import csv
-import os
-from lsy_drone_racing.control.own_mpc_functions import create_ocp_solver_for_mpc, create_ocp_solver_for_recompute
+
+from lsy_drone_racing.control.own_mpc_functions import (
+    create_ocp_solver_for_mpc,
+    create_ocp_solver_for_recompute,
+)
 
 
 class MPController(Controller):
@@ -146,7 +147,6 @@ class MPController(Controller):
         Returns:
             The collective thrust and orientation [t_des, r_des, p_des, y_des] as a numpy array.
         """
-        
         # Update Mass-Estimation of Drone , bzw. update self.params_acc_0_hat
         self.mass_estimator(obs)
 
@@ -253,11 +253,16 @@ class MPController(Controller):
 
 
 
-    def check_for_update(self, obs):
+    def check_for_update(self, obs: dict[str, NDArray[np.floating]]) -> int | None:
         """Check if any gate's position has changed significantly.
+
+        Args:
+            obs: The current observation of the environment. See the environment's observation space
+                for details.
+
         Returns:
             - `None` if no gate moved beyond threshold
-            - The **index (int)** of the first changed gate (row-wise comparison)
+            - The **index (int)** of the first changed gate (row-wise comparison).
         """
         threshold = 0.1
 
@@ -287,11 +292,17 @@ class MPController(Controller):
     
 
 
-    def update_traj(self, obs, updated_gate):
-        """
-        optimize a section around the gate
-        """
+    def update_traj(self, obs: dict[str, NDArray[np.floating]], updated_gate: int):
+        """Set the cubic splines new from the current position.
 
+        Args:
+            obs: The current observation of the environment. See the environment's observation space
+                for details.
+            updated_gate: The (index+1) of the gate that has moved beyond the threshold.
+
+        Returns:
+            None
+        """
         if self._tick == 0:
             print("Kein Update, Tick == 0")
             return
@@ -446,10 +457,14 @@ class MPController(Controller):
 
 
 
-    def _warm_start_from_global(self, warm_start):
-        """
-        Copy the MPC-Cycle in the Recompute Solver
-        staring from start_tick
+    def _warm_start_from_global(self, warm_start: NDArray[np.floating]) -> None:
+        """Copying the MPC-Cycle in the Recompute Solver starting from start_tick.
+
+        Args:
+            warm_start: The states from the MPC that should be used as a warm start.
+
+        Returns:
+            None
         """
         N_r  = self.N_recompute
         solR = self.acados_recompute_solver
@@ -470,13 +485,20 @@ class MPController(Controller):
 
 
 
-    def mass_estimator(self, obs):
+    def mass_estimator(self, obs: dict[str, NDArray[np.floating]]) -> None:
+        """Updates the Acceleration Parameter in the MPC-Solver corresponding to the drone mass.
 
+        Args:
+            obs: The current observation of the environment. See the environment's observation space
+                for details.
+
+        Returns:
+            None
+        """
         max_angle = max_angle=np.deg2rad(20)
 
 
         params_acc = [20.907574256269616, 3.653687545690674] # params_acc[0] ≈ k_thrust / m_nominal
-        nominal_m = 0.027
         GRAVITY = 9.806
 
 

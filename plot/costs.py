@@ -1,6 +1,7 @@
+"""Plotting different penalty functions based on distance."""
+
 import matplotlib.pyplot as plt
 import numpy as np
-
 
 # Definition aller drei Straf-Funktionen
 distances = np.linspace(0, 0.275, 50)
