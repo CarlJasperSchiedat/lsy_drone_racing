@@ -143,6 +143,9 @@ def draw_tunnel(
         env: The drone racing environment.
         centers: An array of [N, 3] points that are the centers of the tunnel.
         radii: radii of tunnel for each centre.
+        step: steps between centres around which the tunnel is drawn.
+        n_seg_circle: Number of segments in the circle.
+        line_width: The width of the tunnel lines.
         alpha: The transparency of the tunnel.
         rgba: The color of the tunnel.
 
@@ -183,7 +186,8 @@ def draw_tunnel(
 
 
 
-def generate_nonuniform_ts(freq=50, des_completion_time=7):
+def generate_nonuniform_ts(freq: int=50, des_completion_time: float=7) -> NDArray:
+    """Generate non-uniform time steps for the MPC."""
     # Total number of points remains the same
     total_points = int(freq * des_completion_time)
     
@@ -191,17 +195,16 @@ def generate_nonuniform_ts(freq=50, des_completion_time=7):
     slow_ranges = [(0.23, 0.26), (0.7, 0.72)]
     
     # Calculate the proportion of time for each range
-    total_slow_time = sum(end - start for start, end in slow_ranges)
-    remaining_time = 1.0 - total_slow_time
+    #total_slow_time = sum(end - start for start, end in slow_ranges)
+    #remaining_time = 1.0 - total_slow_time
     
     # Allocate points proportionally (more points in slow ranges)
     # Let's say we want 3x density in slow ranges
     density_factor = 3
     
     # Calculate point allocation
-    slow_points = int(total_points * (density_factor * total_slow_time) / 
-                     (remaining_time + density_factor * total_slow_time))
-    remaining_points = total_points - slow_points
+    #slow_points = int(total_points * (density_factor * total_slow_time) / (remaining_time + density_factor * total_slow_time))
+    #remaining_points = total_points - slow_points
     
     # Generate base linspace
     base_ts = np.linspace(0, 1, total_points)

@@ -2,6 +2,7 @@
 
 import os
 import platform
+from pathlib import Path
 
 import numpy as np
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
@@ -19,26 +20,36 @@ def rename_acados_dll(name: str):
     Returns:
         None
     """
+    # Unter Linux/macOS ist kein Rename nötig
     if platform.system().lower() != "windows":
-        return  # Nur unter Windows notwendig
+        return
 
-    # print(f"🛠️ In 'rename_acados_dll' with name '{name}'")
+    # ▸ 1. Alte Artefakte aufräumen
+    json_path = Path(f"{name}.json")
+    if json_path.exists():
+        json_path.unlink(missing_ok=True)
 
-    # Alte JSON löschen
-    json_path = f"{name}.json"
-    if os.path.exists(json_path):
-        os.remove(json_path)
+    # Ziel-DLL, die wir gerne haben möchten
+    dst = Path("c_generated_code") / f"acados_ocp_solver_{name}.dll"
+    # Quell-DLL, wie acados sie normalerweise erzeugt
+    src = Path("c_generated_code") / f"libacados_ocp_solver_{name}.dll"
 
-    # Alte DLL löschen
-    dll_path = f"c_generated_code/acados_ocp_solver_{name}.dll"
-    if os.path.exists(dll_path):
-        os.remove(dll_path)
+    # ▸ 2. Wenn das Ziel bereits existiert, ist die DLL schon umbenannt oder im Einsatz → nichts tun
+    if dst.exists():
+        return
 
-    expected = f"c_generated_code/acados_ocp_solver_{name}.dll"
-    actual = f"c_generated_code/libacados_ocp_solver_{name}.dll"
-    if os.path.exists(actual) and not os.path.exists(expected):
-        os.rename(actual, expected)
-        print(f"🛠️ DLL renamed: {actual} ➝ {expected}")
+    # ▸ 3. Prüfen, ob die Quell-DLL wirklich vorliegt
+    if not src.exists():
+        raise FileNotFoundError(src)
+
+    # ▸ 4. Rename versuchen – schlägt unter Windows fehl, wenn die Datei gerade geladen ist
+    try:
+        src.rename(dst)
+        print(f"🛠️ DLL renamed: {src} ➝ {dst}")
+    except PermissionError:
+        # DLL ist bereits von Python/ctypes geladen – rename nicht möglich
+        # → einfach still überspringen, damit der nächste Solver-Build nicht crasht
+        print(f"⚠️  DLL bereits in Benutzung – rename übersprungen ({src.name})")
 
 
 
@@ -187,7 +198,7 @@ def export_quadrotor_ode_model(Q_all: np.ndarray, set_tunnel: bool = True) -> Ac
 
 
 def create_ocp_solver(
-    Tf: float, N: int, Q_all: np.ndarray, set_tunnel: bool = True, verbose: bool = False
+    Tf: float, N: int, Q_all: np.ndarray, set_tunnel: bool = True, windows_workaround: bool = True, verbose: bool = False
 ) -> tuple[AcadosOcpSolver, AcadosOcp]:
     """Creates an acados Optimal Control Problem and Solver.
      
@@ -196,6 +207,7 @@ def create_ocp_solver(
         N: Number of steps in the prediction horizon.
         Q_all: All weights for the cost function in an array.
         set_tunnel: If True, the model will include tunnel constraints.
+        windows_workaround: Annoying windows workaround for my windows PC that hates acados.
         verbose: If True, the solver will print additional information.
 
     Returns:
@@ -256,8 +268,8 @@ def create_ocp_solver(
     # set prediction horizon
     ocp.solver_options.tf = Tf
 
-
-    rename_acados_dll("mpc_universal")
+    if windows_workaround:
+        rename_acados_dll("mpc_universal")
 
     acados_ocp_solver = AcadosOcpSolver(ocp, json_file="mpc_universal.json", verbose=verbose)
 

@@ -38,23 +38,23 @@ MPC_HORIZON_STEPS = 20
 MPC_HORIZON_TIME  = 1
 
 # # Nominal Trajectory Parameters
-WAYPOINTS = np.array([                           # optimiert für 5.12 Sekunden
+WAYPOINTS = np.array([                           # optimiert für reale Bedingungen - Stand 14.07.2025
         [1.0, 1.5, 0.05],  # Original Punkt 0
         [0.95, 1.0, 0.2],   # Original Punkt 1
         [0.8, 0.3, 0.35], # Neu (Mitte zwischen 1 und 2)
         [0.7, -0.2, 0.5],#[0.65, -0.2, 0.5], # Original Punkt 2 (gate 0)
         [0.12, -0.9, 0.575], # Neu (Mitte zwischen 2 und 3)
-        [0.1, -1.5, 0.65],  # Original Punkt 3
-        [0.9, -1.4, 0.9],#[0.8, -1.35, 0.9],#[0.75, -1.3, 0.9], # Neu (Mitte zwischen 3 und 4)
-        [1.2, -0.8, 1.15],#[1.15, -0.8, 1.15],#[1.1, -0.85, 1.15], # Original Punkt 4 (gate 1)
+        [0.1, -1.5, 0.7],  # Original Punkt 3
+        [0.95, -1.4, 1.1],#[0.8, -1.35, 0.9],#[0.75, -1.3, 0.9], # Neu (Mitte zwischen 3 und 4)
+        [1.25, -0.8, 1.2],#[1.15, -0.8, 1.15],#[1.1, -0.85, 1.15], # Original Punkt 4 (gate 1)
         [0.65, -0.175, 0.85], # Neu (Mitte zwischen 4 und 5)
-        [0.0, 0.4, 0.45],#[0.1, 0.45, 0.45],#[0.1, 0.45, 0.55],   
-        [0.0, 1.32, 0.375],#[0.0, 1.28, 0.375],#[0.0, 1.2, 0.375],#[0.0, 1.2, 0.425],  # Original Punkt 6 (gate 2)
-        [0.0, 1.32, 1.1],#[0.0, 1.28, 1.1], #[0.0, 1.2, 1.1],    # Original Punkt 7
-        [-0.15, 0.6, 1.1],  # Neu (Mitte zwischen 7 und 8)
-        [-0.5, 0.0, 1.1],   # Original Punkt 8 (gate 3)
-        [-0.92, -0.5, 1.1],#[-0.9, -0.5, 1.1],#[-0.8, -0.5, 1.1],  # Original Punkt 9
-        [-1.6, -1.0, 1.1],#[-1.4, -1.0, 1.1],#[-1.1, -1.0, 1.1],  # Original Punkt 10
+        [0.0, 0.4, 0.7],#[0.1, 0.45, 0.45],#[0.1, 0.45, 0.55],   
+        [0.0, 1.4, 0.475],#[0.0, 1.28, 0.375],#[0.0, 1.2, 0.375],#[0.0, 1.2, 0.425],  # Original Punkt 6 (gate 2)
+        [-0.2, 1.4, 1.15],#[-0.075, 1.32, 1.15], #[0.0, 1.2, 1.1],    # Original Punkt 7
+        [-0.34, 0.6, 1.1],  # Neu (Mitte zwischen 7 und 8)
+        [-0.6, 0.0, 1.1],   # Original Punkt 8 (gate 3)
+        [-0.8, -0.5, 1.1],#[-0.9, -0.5, 1.1],#[-0.8, -0.5, 1.1],  # Original Punkt 9
+        [-1.0, -1.0, 1.1],#[-1.4, -1.0, 1.1],#[-1.1, -1.0, 1.1],  # Original Punkt 10
     ])
 
 GATE_MAP = {
@@ -79,6 +79,8 @@ Q_POSITION      = 10.0
 Q_POSITION_END  = 10.0
 Q_ALL = np.array([Q_CONTROL, Q_ANGLE, Q_OBSTACLE, Q_POSITION, Q_POSITION_END], dtype=float)
 
+# # any debug prints ? Self-written and MPC-debug messages spressed if "False"
+PRINT_AUSGABE = False
 
 
 
@@ -102,7 +104,7 @@ class MPController(Controller):
 
 
         # Waypoints as in the trajectory controller but tuned and extended by trial and error.
-        self.waypoints = WAYPOINTS
+        self.waypoints = WAYPOINTS.copy().astype(float)
         self.gate_map = GATE_MAP
 
 
@@ -129,8 +131,7 @@ class MPController(Controller):
         
 
 
-
-        self.des_completion_time = COMPLETION_TIME
+        self.des_completion_time = config.controller.get("COMPLETION_TIME", COMPLETION_TIME)
         self.N = MPC_HORIZON_STEPS
         self.T_HORIZON = MPC_HORIZON_TIME
         self.dt = self.T_HORIZON / self.N
@@ -149,11 +150,19 @@ class MPController(Controller):
         self.z_des = cs_z(ts)
 
         # Append points after trajectory for MPC
-        self.x_des = np.concatenate((self.x_des, [self.x_des[-1]] * (2 * self.N + 1)))
-        self.y_des = np.concatenate((self.y_des, [self.y_des[-1]] * (2 * self.N + 1)))
-        self.z_des = np.concatenate((self.z_des, [self.z_des[-1]] * (2 * self.N + 1)))
+        pad = 10 * self.N
+        self.x_des = np.concatenate((self.x_des, [self.x_des[-1]] * pad))
+        self.y_des = np.concatenate((self.y_des, [self.y_des[-1]] * pad))
+        self.z_des = np.concatenate((self.z_des, [self.z_des[-1]] * pad))
     
-        self.acados_ocp_solver, self.ocp = create_ocp_solver(self.T_HORIZON, self.N, Q_ALL, SET_TUNNEL)
+        # Tunnel Constrain Settings
+        self.set_tunnel = config.controller.get("SET_TUNNEL", SET_TUNNEL)
+        self.tunnel_width = TUNNEL_WIDTH_GENERAL
+        self.tunnel_w_gate = TUNNEL_WIDTH_AT_GATE
+        self.tunnel_trans = TUNNEL_TRANSITION_LENGTH
+
+        windows_workaround = config.controller.get("windows_workaround", True)
+        self.acados_ocp_solver, self.ocp = create_ocp_solver(self.T_HORIZON, self.N, Q_ALL, self.set_tunnel, windows_workaround)
 
         self.last_f_collective = 0.3
         self.last_rpy_cmd = np.zeros(3)
@@ -162,11 +171,6 @@ class MPController(Controller):
         self.finished = False
         self.params_acc_0_hat = ACCELERATION_ESTIMATION # params_acc[0] ≈ k_thrust / m_nominal ; nominal value given for nominal_mass = 0.027
         self.vz_prev = 0.0 # estimated velocity at start = 0
-
-        self.set_tunnel = SET_TUNNEL
-        self.tunnel_width = TUNNEL_WIDTH_GENERAL # Tunnel width (radius) for the MPC Tunnel constraintsAdd commentMore actions
-        self.tunnel_w_gate = TUNNEL_WIDTH_AT_GATE # Tunnel width at the gate
-        self.tunnel_trans = TUNNEL_TRANSITION_LENGTH # Distance at which the tunnel width transitions from gate width to far width
 
     def compute_control(
         self, obs: dict[str, NDArray[np.floating]], info: dict | None = None
@@ -189,14 +193,20 @@ class MPController(Controller):
             self.update_traj(obs,updated_gate)
             
         if not np.array_equal(self.prev_obstacle,obs["obstacles_pos"]):
-            print('Obstacle has changed:')  
+            if PRINT_AUSGABE:
+                print('Obstacle has changed')  
             self.prev_obstacle=obs["obstacles_pos"]
 
 
-        i = min(self._tick, len(self.x_des) - 1)
-        if self._tick > i:
+        # Check if the desired trajectory is long enough for the MPC-Horizon
+        # If not terminate porcess (because with the padding already added this should not happen)
+        remaining = len(self.x_des) - self._tick
+        if remaining < self.N + 1:
             self.finished = True
-
+            hover_cmd = np.array([0.3, 0.0, 0.0, 0.0])
+            return hover_cmd
+        i = min(self._tick, len(self.x_des) - 1)
+        
 
         q = obs["quat"]
         r = R.from_quat(q)
@@ -219,13 +229,14 @@ class MPController(Controller):
         self.y=[] # self.y for debug visulization
         for j in range(self.N):
 
-            # # Help-Parameters for the Tunnel Constraints
             y_ref = np.array([ self.x_des[i + j], self.y_des[i + j], self.z_des[i + j] ])
-            if SET_TUNNEL:
+            if self.set_tunnel:
+                # # Help-Parameters for the Tunnel Constraints
                 y_ref_p1 = np.array([ self.x_des[i + j + 1], self.y_des[i + j + 1], self.z_des[i + j + 1] ])
                 delta = np.array(y_ref_p1 - y_ref)
                 tangent_norm = delta / ( np.linalg.norm(delta) + 1e-6 )
                 tunnel_width = self._tunnel_radius(y_ref)
+                # # Set parameters for the MPC
                 yref = np.hstack([ # params = vertcat(p_obs1, p_obs2, p_obs3, p_obs4, p_ref, params_acc_0, p_tun_tan, p_tun_r)
                     self.prev_obstacle[:, :2].flatten(),
                     y_ref, 
@@ -245,13 +256,14 @@ class MPController(Controller):
                 self.y.append(yref) # self.y for debug visulization
             
 
-        # # Help-Parameters for the Tunnel Constraints
         y_ref = np.array([ self.x_des[i + self.N], self.y_des[i + self.N], self.z_des[i + self.N] ])
-        if SET_TUNNEL:
+        if self.set_tunnel:
+            # # Help-Parameters for the Tunnel Constraints
             y_ref_p1 = np.array([ self.x_des[i + self.N + 1], self.y_des[i + self.N + 1], self.z_des[i + self.N + 1] ])
             delta = np.array(y_ref_p1 - y_ref)
             tangent_norm = delta / ( np.linalg.norm(delta) + 1e-6 )
             tunnel_width = self._tunnel_radius(y_ref)
+            # # Set parameters for the MPC
             yref_N = np.hstack([
                 self.prev_obstacle[:, :2].flatten(),
                 y_ref,
@@ -261,6 +273,7 @@ class MPController(Controller):
             ])
             self.acados_ocp_solver.set(self.N, "p", yref_N)
         else:
+            # # Set parameters for the MPC
             yref_N = np.hstack([
                 self.prev_obstacle[:, :2].flatten(),
                 y_ref, 
@@ -268,7 +281,7 @@ class MPController(Controller):
             ])
             self.acados_ocp_solver.set(self.N, "p", yref_N)
         
-        
+
         self.acados_ocp_solver.solve()
 
 
@@ -327,8 +340,9 @@ class MPController(Controller):
             
             if np.linalg.norm(prev_gate - current_gate) > threshold:
                 self.prev_gates = current_gates.copy()  # Update stored positions
-                print(f"Gate {gate_idx} moved significantly.")
-                print(self.prev_gates[gate_idx])
+                if PRINT_AUSGABE:
+                    print(f"Gate {gate_idx} moved significantly.")
+                    print(self.prev_gates[gate_idx])
                 return gate_idx+1  # Add one, so that we can check update for gate 0 with if statement. 
         
         return None
@@ -345,7 +359,8 @@ class MPController(Controller):
             None
         """
         if self._tick == 0:
-            print("Kein Update, Tick == 0")
+            if PRINT_AUSGABE:
+                print("Kein Update, Tick == 0")
             return
         
         # update the waypoints that correspond to a specific gate
@@ -403,8 +418,8 @@ class MPController(Controller):
         self.y_des[tick_min:tick_max + 1]  = y_new
         self.z_des[tick_min:tick_max + 1]  = z_new
 
-
-        print(f"✅ Neue Teiltrajektorie um Gate {gate_idx} aktualisiert.")
+        if PRINT_AUSGABE:
+            print(f"✅ Neue Teiltrajektorie um Gate {gate_idx} aktualisiert.")
         
 
     def mass_estimator(self, obs: dict[str, NDArray[np.floating]]) -> None:

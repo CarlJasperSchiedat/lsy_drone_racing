@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 def simulate(
-    config: str = "level2.toml",
+    config: str | Path | ConfigDict = "level2.toml",
     controller: str | None = None,
     n_runs: int = 1,
     gui: bool | None = True,
@@ -51,7 +51,10 @@ def simulate(
     """Evaluate the drone controller over multiple episodes.
 
     Args:
-        config: The path to the configuration file. Assumes the file is in `config/`.
+        config: 
+            - The path to the configuration file. Assumes the file is in `config/`.
+            - OR already loaded configuration that is taken as is.
+
         controller: The name of the controller file in `lsy_drone_racing/control/` or None. If None,
             the controller specified in the config file is used.
         n_runs: The number of episodes.
@@ -60,8 +63,11 @@ def simulate(
     Returns:
         A list of episode times.
     """
-    # Load configuration and check if firmare should be used.
-    config = load_config(Path(__file__).parents[1] / "config" / config)
+    # Check if ConfigDict is given or a Path is given
+    if isinstance(config, (str, Path)):
+        # Load configuration and check if firmare should be used.
+        config = load_config(Path(__file__).parents[1] / "config" / config)
+
     if gui is None:
         gui = config.sim.gui
     else:
@@ -80,7 +86,7 @@ def simulate(
         track=config.env.track,
         disturbances=config.env.get("disturbances"),
         randomizations=config.env.get("randomizations"),
-        seed=np.random.randint(0,1000), #seed=config.env.seed,
+        seed=np.random.randint(0,3000), #seed=config.env.seed,
     )
     env = JaxToNumpy(env)
 
@@ -119,7 +125,7 @@ def simulate(
                     except Exception as e:
                         logger.error(f"Error drawing MPC line: {e} \nExpend the refence trajectory")
 
-                    if controller.set_tunnel:  # only draw tunnel if it is set
+                    if getattr(controller, "set_tunnel", False):  # only draw tunnel if it is set
                         draw_tunnel(env=env,centers=y_ref,radii=radii,rgba=rgba_1) # MPC tunnel
 
                     env.render()
