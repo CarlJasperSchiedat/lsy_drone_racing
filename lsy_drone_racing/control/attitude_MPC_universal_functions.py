@@ -177,8 +177,8 @@ def export_quadrotor_ode_model(Q_all: np.ndarray, set_tunnel: bool = True) -> Ac
     d3 = (px - p_obs3[0])**sharpness + (py - p_obs3[1])**sharpness
     d4 = (px - p_obs4[0])**sharpness + (py - p_obs4[1])**sharpness
     safety_margin = 0.015 # Min allowed distance squared
-    obs_cost = (0*np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
-           0*np.exp(-d3/safety_margin) + np.exp(-d4/safety_margin))
+    obs_cost = (0.01*np.exp(-d1/(safety_margin)) + np.exp(-d2/safety_margin) + 
+           0.01*np.exp(-d3/safety_margin) + np.exp(-d4/safety_margin))
 
     #Penalising deviation from Reference trajectory #1
     pos_error = (px - p_ref[0])**2 + (py - p_ref[1])**2 + (pz - p_ref[2])**2

@@ -107,7 +107,7 @@ def extend_trajectory(waypoints: np.ndarray, ticks: np.ndarray, X_opt: np.ndarra
 
 
 
-file_name = "6_sec__15_06_25_3"
+file_name = "traj_2"
 
 
 
@@ -121,9 +121,9 @@ X_opt = np.array(X_raw)  # Shape: (N+1, nx)
 
 
 
-waypoints, ticks, gate_idx_map = prepare_trajectory_from_solution(X_opt, N_list, stepsize=20, exclude_gate_window=5)
+waypoints, ticks, gate_idx_map = prepare_trajectory_from_solution(X_opt, N_list, stepsize=5, exclude_gate_window=1)
 
-waypoints, ticks = extend_trajectory(waypoints, ticks, X_opt, n_extra=6, spacing=30)
+waypoints, ticks = extend_trajectory(waypoints, ticks, X_opt, n_extra=1, spacing=10)
 
 
 # print(ticks)

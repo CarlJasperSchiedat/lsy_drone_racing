@@ -33,29 +33,29 @@ TUNNEL_WIDTH_AT_GATE     = 0.2
 TUNNEL_TRANSITION_LENGTH = 0.6
 
 # # MPC Parameters
-COMPLETION_TIME   = 5.12
+COMPLETION_TIME   = 7
 MPC_HORIZON_STEPS = 20
 MPC_HORIZON_TIME  = 1
 
 # # Nominal Trajectory Parameters
-WAYPOINTS = np.array([                           # optimiert für reale Bedingungen - Stand 14.07.2025
-        [1.0, 1.5, 0.05],  # Original Punkt 0
-        [0.95, 1.0, 0.2],   # Original Punkt 1
-        [0.8, 0.3, 0.35], # Neu (Mitte zwischen 1 und 2)
-        [0.7, -0.2, 0.5],#[0.65, -0.2, 0.5], # Original Punkt 2 (gate 0)
-        [0.12, -0.9, 0.575], # Neu (Mitte zwischen 2 und 3)
-        [0.1, -1.5, 0.7],  # Original Punkt 3
-        [0.95, -1.4, 1.1],#[0.8, -1.35, 0.9],#[0.75, -1.3, 0.9], # Neu (Mitte zwischen 3 und 4)
-        [1.25, -0.8, 1.2],#[1.15, -0.8, 1.15],#[1.1, -0.85, 1.15], # Original Punkt 4 (gate 1)
-        [0.65, -0.175, 0.85], # Neu (Mitte zwischen 4 und 5)
-        [0.0, 0.4, 0.7],#[0.1, 0.45, 0.45],#[0.1, 0.45, 0.55],   
-        [0.0, 1.4, 0.475],#[0.0, 1.28, 0.375],#[0.0, 1.2, 0.375],#[0.0, 1.2, 0.425],  # Original Punkt 6 (gate 2)
-        [-0.2, 1.4, 1.15],#[-0.075, 1.32, 1.15], #[0.0, 1.2, 1.1],    # Original Punkt 7
-        [-0.34, 0.6, 1.1],  # Neu (Mitte zwischen 7 und 8)
-        [-0.6, 0.0, 1.1],   # Original Punkt 8 (gate 3)
-        [-0.8, -0.5, 1.1],#[-0.9, -0.5, 1.1],#[-0.8, -0.5, 1.1],  # Original Punkt 9
-        [-1.0, -1.0, 1.1],#[-1.4, -1.0, 1.1],#[-1.1, -1.0, 1.1],  # Original Punkt 10
-    ])
+WAYPOINTS = np.array([                           # erster Versuch für die robuste Trajektorie - 14.07
+    [1.0, 1.5, 0.05],    # Original Punkt 0
+    [0.95, 1.0, 0.2],    # Original Punkt 1
+    [0.8, 0.3, 0.35],    # Neu
+    [0.65, -0.2, 0.5],   # Original Punkt 2 (gate 0)
+    [0.12, -0.9, 0.575], # Neu
+    [0.1, -1.5, 0.65],   # Original Punkt 3
+    [0.75, -1.3, 0.9],   # Neu
+    [1.1, -0.85, 1.15],  # Original Punkt 4 (gate 1)
+    [0.65, -0.175, 0.9], # Neu
+    [0.1, 0.45, 0.6],    # Original Punkt 5 ??
+    [0.0, 1.2, 0.5],     # Original Punkt 6 (gate 2)
+    [0.0, 1.2, 1.1],     # Original Punkt 7
+    [-0.15, 0.6, 1.1],   # Neu
+    [-0.5, 0.0, 1.1],    # Original Punkt 8 (gate 3)
+    [-0.9, -0.5, 1.1],   # Original Punkt 9
+    [-1.7, -1.0, 1.1],   # Original Punkt 10
+])
 
 GATE_MAP = {
     0 : 3,
@@ -132,8 +132,8 @@ class MPController(Controller):
 
 
         self.des_completion_time = config.controller.get("COMPLETION_TIME", COMPLETION_TIME)
-        self.N = MPC_HORIZON_STEPS
-        self.T_HORIZON = MPC_HORIZON_TIME
+        self.N = config.controller.get("MPC_HORIZON_STEPS", MPC_HORIZON_STEPS)
+        self.T_HORIZON = config.controller.get("MPC_HORIZON_TIME", MPC_HORIZON_TIME)
         self.dt = self.T_HORIZON / self.N
 
         ts = np.linspace(0, 1, int(self.freq * self.des_completion_time))
@@ -200,7 +200,7 @@ class MPController(Controller):
 
         # Check if the desired trajectory is long enough for the MPC-Horizon
         # If not terminate porcess (because with the padding already added this should not happen)
-        remaining = len(self.x_des) - self._tick
+        remaining = len(self.x_des) - 1 - self._tick
         if remaining < self.N + 1:
             self.finished = True
             hover_cmd = np.array([0.3, 0.0, 0.0, 0.0])
@@ -453,7 +453,7 @@ class MPController(Controller):
 
         denominator = self.last_f_collective * cos_roll_pitch + 1e-6    # safety against numerial errors
 
-        params_acc_0   = (vz_dot + GRAVITY) / denominator - params_acc[1]/denominator
+        params_acc_0   = (vz_dot + GRAVITY) / denominator - params_acc[1]/(self.last_f_collective + 1e-6)
         if params_acc_0 <= 0:                         # safety against numerial errors
             return
 

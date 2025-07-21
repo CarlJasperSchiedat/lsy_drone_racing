@@ -1,22 +1,42 @@
 """This module runs multiple simulations of the drone racing environment."""
+import numbers
 import platform
 import shutil
+from collections import OrderedDict, defaultdict
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.typing import NDArray
 from sim import simulate
 from tqdm.auto import tqdm
 
 from lsy_drone_racing.utils import load_config
 
 # Define the simulation parameters
-T_list = np.arange(5.5, 7.0 + 0.5, 0.5)
-#T_list = 5.12
-tunnel = [True, False]
-how_many = 5
-gui_enabled = False
+Q_CONTROL       =  0.05
+Q_ANGLE         =  0.05
+Q_OBSTACLE      = 50.0
+Q_POSITION      = 10.0
+Q_POSITION_END  = 10.0
+Q_ALL = np.array([Q_CONTROL, Q_ANGLE, Q_OBSTACLE, Q_POSITION, Q_POSITION_END], dtype=float)
+
+T_list = np.arange(6.0, 9.0 + 0.5, 1.0)  # entweder np.arange() oder einfach nur float
+# print(T_list)
+# T_list = 8
+
+tunnel = [False]#, False]  # [True, False] oder einfach nur [True]
+how_many = 2
+
+Q_50 = Q_ALL.copy()
+Q_25 = np.where(Q_ALL == Q_OBSTACLE, 25, Q_ALL)
+Q_10 = np.where(Q_ALL == Q_OBSTACLE, 10, Q_ALL)
+mpc_settings = [(30, 1.0, Q_50)]#, (45, 1.5, Q_50)]  #[(mpc_horizon_steps, mpc_horizon_time), (...,....)]
+
+
+gui_enabled = True
 
 
 cfg_path = Path("config/level2.toml")
@@ -30,42 +50,62 @@ def run_multiple_simulations():
     T_iter = [float(T_list)] if not isinstance(T_list, Iterable) else T_list
 
     # container that is dynamically adapted to 'tunnel'
-    stats   = {flag: {"T": [], "avg": [], "succ": []} for flag in tunnel}
-
-    for set_tunnel in tunnel:
-        clean_acados_folder(set_tunnel)
-
-        tqdm.write(f"\n\n=====  SET_TUNNEL = {set_tunnel}  =====\n\n")
-
-        for T in tqdm(T_iter, desc="COMPLETION_TIME-Sweep", unit="s", leave=False):
-            # Load and modify given config
-            cfg = load_config(cfg_path)
-            cfg.controller.COMPLETION_TIME = float(T)
-            cfg.controller.SET_TUNNEL      = set_tunnel
-
-            # Simulate
-            ep_times = simulate(config=cfg, n_runs=how_many, gui=gui_enabled)
-
-            # Calculate statistics
-            passed = [t for t in ep_times if t is not None]
-            n_success = len(passed)
-            success_rate = n_success / len(ep_times)
-            mean_time = np.nan if not passed else np.mean(passed)
-
-            # Save simulation results
-            stats[set_tunnel]["T"].append(T)
-            stats[set_tunnel]["avg"].append(mean_time)
-            stats[set_tunnel]["succ"].append(n_success)
-            
-            tqdm.write(
-                f"[Tunnel {set_tunnel}] T ={T:4.1f}s | "
-                f"Ø ={mean_time:6.2f}s | "
-                f"{n_success}/{len(ep_times)} passed ({success_rate:.0%})" 
-            )
+    stats = defaultdict(lambda: {"T": [], "avg": [], "std": [], "succ": []})
+    
+    total_runs = len(tunnel) * len(mpc_settings) * len(T_iter)
 
 
-    print("\n\nFertig\n\n", stats)
+    with tqdm(total=total_runs, desc="Simulations", unit="run") as pbar:
+        for set_tunnel in tunnel:
+            for N, Tf, Q_all in mpc_settings:
 
+                clean_acados_folder(N, Tf, Q_all, set_tunnel)
+
+                q_obst = float(Q_all[2])
+
+                for T in T_iter:
+                
+                    # Load and modify given config
+                    cfg = load_config(cfg_path)
+                    cfg.controller.COMPLETION_TIME        = float(T)
+                    cfg.controller.MPC_HORIZON_STEPS      = N
+                    cfg.controller.MPC_HORIZON_TIME       = Tf
+                    cfg.controller.Q_ALL                  = Q_all
+                    cfg.controller.SET_TUNNEL             = set_tunnel
+
+                    # Simulate
+                    ep_times = simulate(config=cfg, n_runs=how_many, gui=gui_enabled)
+
+                    # Calculate statistics
+                    passed = [t for t in ep_times if t is not None]
+                    n_success = len(passed)
+                    mean_time = np.nan if not passed else np.mean(passed)
+                    std_time   = np.nan if not passed else np.std(passed, ddof=1)
+
+                    # Save simulation results
+                    key = (set_tunnel, N, Tf, q_key(Q_all))
+                    stats[key]["T"].append(T)
+                    stats[key]["avg"].append(mean_time)
+                    stats[key]["std"].append(std_time)
+                    stats[key]["succ"].append(n_success)
+                
+                    post = OrderedDict([
+                        ("T",       f"{T:0.1f}"),
+                        ("avg-T",   f"{mean_time:4.1f}s"),
+                        ("std-T",   f"{std_time:4.1f}s"),
+                        ("succ",    f"{n_success}/{len(ep_times)}"),
+                        ("tunnel",  set_tunnel),
+                        ("N",       N),
+                        ("Tf",      f"{Tf:0.1f}"),
+                        ("Q_obst",  int(q_obst)),
+                    ])
+
+                    pbar.set_postfix(post)
+                    
+                    pbar.update(1)
+
+
+    # print("\n\nFertig - vor 'filling missing times'\n\n", stats)
 
     stats = fill_missing_avgs(stats)
 
@@ -75,7 +115,21 @@ def run_multiple_simulations():
 
 
 
-def clean_acados_folder(set_tunnel: bool, folder: str = "c_generated_code") -> None:
+
+def q_key(Q_all: np.ndarray | list[float]) -> tuple:
+    """Rundet und gibt IMMER ein Tupel zurück."""
+    return tuple(np.round(np.asarray(Q_all, dtype=float), 8))
+
+
+
+
+def clean_acados_folder(
+        mpc_horizon_steps: int,
+        mpc_horizon_time: float,
+        Q_all: NDArray[np.floating[Any]],
+        set_tunnel: bool,
+        folder: str = "c_generated_code"
+) -> None:
     """Entfernt den kompletten Inhalt von <folder>, sofern wir unter Windows laufen. Auf anderen Betriebssystemen macht die Funktion nichts."""
     if platform.system() != "Windows":
         return                      # Non-Windows: überspringen
@@ -86,12 +140,18 @@ def clean_acados_folder(set_tunnel: bool, folder: str = "c_generated_code") -> N
 
     # Dummy Aufruf von der sim aus gründen
     cfg = load_config(cfg_path)
+
     cfg.controller.windows_workaround = False
-    cfg.controller.SET_TUNNEL      = set_tunnel
+
+    cfg.controller.MPC_HORIZON_STEPS      = mpc_horizon_steps
+    cfg.controller.MPC_HORIZON_TIME       = mpc_horizon_time
+    cfg.controller.Q_ALL                  = Q_all
+    cfg.controller.SET_TUNNEL             = set_tunnel
     try:
         simulate(config=cfg, n_runs=1, gui=False)
     except(FileNotFoundError, OSError):
-        print("Dummy Aufruf fehlgeschlagen")
+        print("")
+        #print("Dummy Aufruf fehlgeschlagen")
 
 
 def fill_missing_avgs(stats: dict) -> dict:
@@ -116,8 +176,7 @@ def fill_missing_avgs(stats: dict) -> dict:
     return stats
 
 
-def plot_results(stats: dict,
-                        how_many: int) -> None:
+def plot_results(stats: dict, how_many: int) -> None:
     """Plot of stats.
     
     • X-Achse  = Ø-Zeit je COMPLETION_TIME  (NaNs bereits ersetzt)
@@ -125,29 +184,39 @@ def plot_results(stats: dict,
     """
     fig, ax = plt.subplots()
 
-    markers = {True: "o", False: "s"}      # Tunnel an/aus
+    # optionale Stil-Maps: Tunnel-Flag → Linestyle, Q_obst → Marker
     linestyles = {True: "-", False: "--"}
+    markers    = {50: "o", 25: "s", 10: "^"}   # Q_OBSTACLE-Wert → Marker
 
-    for flag, data in stats.items():
-        x = data["avg"]            # Ø-Zeit  (bereits mit Schätzungen gefüllt)
-        y = data["succ"]           # Erfolgs-Zahl
+    for (flag, N, Tf, q_vec), data in stats.items():
+        x_vals = data["avg"]        # Ø-Zeit
+        y_vals = data["succ"]       # # erfolgreiche Läufe
 
-        # Plot als Linie + Marker
-        ax.plot(x, y,
-                marker=markers.get(flag, "o"),
-                linestyle=linestyles.get(flag, "-"),
-                label=f"Tunnel = {flag}")
+        
+        if isinstance(q_vec, numbers.Number):
+            q_obst = float(q_vec)
+        else:
+            q_obst = float(q_vec[2])
+
+
+        ax.plot(
+            x_vals,
+            y_vals,
+            marker = markers.get(q_obst, "o"),
+            linestyle = linestyles.get(flag, "-"),
+            label = (f"Tunnel={flag} | N={N}, Tf={Tf}s | "
+                     f"Q_obst={q_obst:g}")
+        )
 
     ax.set_xlabel("Ø-Zeit erfolgreicher Läufe [s]")
     ax.set_ylabel("Anzahl erfolgreicher Läufe")
     ax.set_ylim(0, how_many)
     ax.margins(x=0.05, y=0.05)
     ax.grid(True, linestyle="--", linewidth=0.5)
-    ax.legend(loc="upper left")
-    plt.title("Erfolgs-Quote vs. Ø-Zeit")
+    ax.legend(fontsize="x-small", loc="upper left")
+    ax.set_title("Einstellungen für Max Sim")
     fig.tight_layout()
     plt.show()
-
 
 
 

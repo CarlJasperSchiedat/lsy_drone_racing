@@ -363,7 +363,7 @@ def optimize_velocity_bounded(gates: np.ndarray, gates_quat: np.ndarray, N_list:
 
 
     min_force = 0.1
-    max_force = 1
+    max_force = 0.8
 
     # Bounds for inputs
     input_lower_bound = [-5, -5, -5, -5]
@@ -387,8 +387,6 @@ def optimize_velocity_bounded(gates: np.ndarray, gates_quat: np.ndarray, N_list:
 
 
 
-
-
     idx = 0
     gate_idx = 1
     for seg_idx, N_seg in enumerate(N_list):
@@ -400,11 +398,21 @@ def optimize_velocity_bounded(gates: np.ndarray, gates_quat: np.ndarray, N_list:
             ui = U[idx]
             xi_next = X[idx + 1]
 
+
             w += [xi, ui]
-            if gate_idx == 2:
-                w0 += list(np.concatenate([np.array([0, -1.5, 1]).flatten(), np.zeros(nx - 3)])) + [0]*nu
+            
+
+            if gate_idx == 1:
+                w0 += list(np.concatenate([np.array([1.0, 0.5, 0.0]).flatten(), np.zeros(nx - 3)])) + [0]*nu
+            elif gate_idx == 2:
+                w0 += list(np.concatenate([np.array([0.0, -1.5, 0.6]).flatten(), np.zeros(nx - 3)])) + [0]*nu
+            elif gate_idx == 3:
+                w0 += list(np.concatenate([np.array([0.1, 0.45, 0.6]).flatten(), np.zeros(nx - 3)])) + [0]*nu
+            elif gate_idx == 4:
+                w0 += list(np.concatenate([np.array([-0.1, 1.0, 1.2]).flatten(), np.zeros(nx - 3)])) + [0]*nu
             else:
                 w0 += list(np.concatenate([np.array(gate_from).flatten(), np.zeros(nx - 3)])) + [0]*nu
+
 
             lbw += position_lower_bound + velocity_lower_bound + roll_lower_bound + collective_force_lower_bound + command_lower_bound + input_lower_bound
             ubw += position_upper_bound + velocity_upper_bound + roll_upper_bound + collective_force_upper_bound + command_upper_bound + input_upper_bound
@@ -442,13 +450,16 @@ def optimize_velocity_bounded(gates: np.ndarray, gates_quat: np.ndarray, N_list:
             # Obstacle penalty
             if obstacles: 
                 for idx_obs, obs in enumerate(obstacles):
-                    dist = sumsqr(xi[0:2] - obs[0:2])
 
-                    multiplikator = 10.0
-                    falloff = 2.5
-                    faktor = 200
-                    exponent = 2
-                    cost += multiplikator * exp(- faktor * ((dist / falloff)*exponent) )
+                    if idx_obs == 5:
+                        
+                        dist = sumsqr(xi[0:2] - obs[0:2])
+
+                        multiplikator = 10.0
+                        falloff = 2.5
+                        faktor = 200
+                        exponent = 2
+                        cost += multiplikator * exp(- faktor * ((dist / falloff)**exponent) )
 
 
 
@@ -475,11 +486,12 @@ def optimize_velocity_bounded(gates: np.ndarray, gates_quat: np.ndarray, N_list:
 
                     rel_pos = gate_rot.T @ (xi[0:3] - gate_pos)
 
-                    penalty_dist = fmax( fabs(fabs(rel_pos[0]) - target_dist), fabs(fabs(rel_pos[2]) - target_dist) )
-                    xz_penalty = exp(- faktor_xz * ((penalty_dist / falloff_xz)**exponent_xz) )
-                    y_falloff = exp(- faktor_y * ((penalty_dist / falloff_y)**exponent_y) )
+                    penalty_dist_xz = fmax( fabs(fabs(rel_pos[0]) - target_dist), fabs(fabs(rel_pos[2]) - target_dist) )
+                    penalty_dist_y = fabs(fabs(rel_pos[1]) - target_dist)
+                    xz_penalty = exp(- faktor_xz * ((penalty_dist_xz / falloff_xz)**exponent_xz) )
+                    y_falloff = exp(- faktor_y * ((penalty_dist_y / falloff_y)**exponent_y) )
                     
-                    cost += y_falloff * xz_penalty
+                    cost += 10 * y_falloff * xz_penalty
 
 
 
@@ -498,10 +510,15 @@ def optimize_velocity_bounded(gates: np.ndarray, gates_quat: np.ndarray, N_list:
             ubg += [0]*3
 
             # '''
-            # Velocity rewarden
-            v_drone = X[idx][3:6]
-            gate_dir = DM(R.from_quat(gates_quat[gate_idx]).apply([0, 1, 0]))
-            cost -= 4.0 * dot(v_drone, gate_dir)
+            # Velocity
+            v_drone = X[idx][3:6]                         # (vx, vy, vz) in Welt
+            gate_rot = DM(R.from_quat(gates_quat[gate_idx]).as_matrix())
+            v_gate   = gate_rot.T @ v_drone               # in Gate-Koordinaten
+
+            # Quer- (x) und Vertikalanteil (z) müssen ~0 sein
+            g   += [v_gate[0], v_gate[2]]
+            lbg += [-0.1, -0.1]                             # exakt oder enger Toleranzbereich
+            ubg += [+0.1, +0.1]
             # '''
 
 
@@ -525,9 +542,15 @@ def optimize_velocity_bounded(gates: np.ndarray, gates_quat: np.ndarray, N_list:
 
     # '''
     # Velocity rewarden
-    v_drone = X[total_N][3:6]
-    gate_dir = DM(R.from_quat(gates_quat[-1]).apply([0, 1, 0]))
-    cost -= 4.0 * dot(v_drone, gate_dir)
+    # Velocity
+    v_drone = X[total_N][3:6]                         # (vx, vy, vz) in Welt
+    gate_rot = DM(R.from_quat(gates_quat[-1]).as_matrix())
+    v_gate   = gate_rot.T @ v_drone               # in Gate-Koordinaten
+
+    # Quer- (x) und Vertikalanteil (z) müssen ~0 sein
+    g   += [v_gate[0], v_gate[2]]
+    lbg += [-0.1, -0.1]                             # exakt oder enger Toleranzbereich
+    ubg += [+0.1, +0.1]
     # '''
 
     # Letztes X anhängen
@@ -553,9 +576,30 @@ def optimize_velocity_bounded(gates: np.ndarray, gates_quat: np.ndarray, N_list:
         "ipopt.print_level": 0,
         "print_time": 0,
         "verbose": False,
-        "ipopt.max_cpu_time": 40.0,  # Zeitlimit in Sekunden
+        "ipopt.max_cpu_time": 120.0,  # Zeitlimit in Sekunden
     })
     sol = solver(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg)
+
+    g_fun = Function('g_fun', [prob["x"]], [prob["g"]])
+
+    if "x" in sol:
+        g_num = np.array(g_fun(sol["x"])).flatten()
+
+        lbg_arr = np.array(lbg)
+        ubg_arr = np.array(ubg)
+
+        # positive Werte = Verletzung
+        viol   = np.maximum(lbg_arr - g_num, 0.0) + np.maximum(g_num - ubg_arr, 0.0)
+
+        worst  = int(np.argmax(viol))
+        print(f"\n➜ schlimmste Verletzung  idx = {worst}")
+        print("   Wert         :", g_num[worst])
+        print("   zul. Bereich :", lbg[worst], "…", ubg[worst])
+        print("➜  Anzahl Constraints >1 mm verletzt:", np.sum(viol > 1e-3))
+    else:
+        print("\n⚠️  Solver hat keine Variable »x« geliefert – NLP abgebrochen, bevor eine iterierte Lösung vorlag.")
+
+
     if solver.stats()["success"]:
         print("✅ Optimierung erfolgreich.")
     else:
