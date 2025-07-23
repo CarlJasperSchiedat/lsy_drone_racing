@@ -1,8 +1,87 @@
 """Helpers for trajectory optimization in drone racing environments."""
+import matplotlib.pyplot as plt
 import numpy as np
-from optimizer_old import optimize_velocity_bounded
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from optimizer import optimize_velocity_bounded
 
-#from optimizer import optimize_original
+
+def plot_waypoints_and_environment(waypoints: np.ndarray, obstacle_positions: np.ndarray, gates_positions: np.ndarray, gates_quat: np.ndarray) -> None:
+    """Plots the waypoints, obstacles, and gates in a 3D environment."""
+
+    def quaternion_to_rotation_matrix(q: np.ndarray) -> np.ndarray:
+        """Convert a quaternion into a rotation matrix."""
+        x, y, z, w = q
+        R = np.array([
+            [1-2*(y**2+z**2),  2*(x*y - z*w),    2*(x*z + y*w)],
+            [2*(x*y + z*w),    1-2*(x**2+z**2),  2*(y*z - x*w)],
+            [2*(x*z - y*w),    2*(y*z + x*w),    1-2*(x**2+y**2)]
+        ])
+        return R
+    
+    def rotate_and_translate(square: np.ndarray, R: np.ndarray, gate: np.ndarray) -> np.ndarray:
+        """Rotate and translate a square defined in the XY-plane."""
+        return (R @ square.T).T + gate
+
+
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Waypoints plotten
+    waypoints = np.array(waypoints)
+    ax.plot(waypoints[:,0], waypoints[:,1], waypoints[:,2], 'bo-', label='Waypoints', markersize=2)
+
+    # Gates als rotierte Quadrate
+    gate_size = 0.45 / 2
+    gate_size_outer = gate_size + 0.1
+    gate_color = (1, 0, 0, 0.5)
+    gates_positions = np.array(gates_positions)
+
+    for i, gate in enumerate(gates_positions):
+        quat = gates_quat[i]
+        R = quaternion_to_rotation_matrix(quat)
+
+        # Inner gate (actual fly-through area)
+        inner_square = np.array([
+            [-gate_size, 0, -gate_size],
+            [ gate_size, 0, -gate_size],
+            [ gate_size, 0,  gate_size],
+            [-gate_size, 0,  gate_size],
+        ])
+        inner_square = rotate_and_translate(inner_square, R, gate)
+        poly = Poly3DCollection([inner_square], color=gate_color, label='Gate' if i == 0 else "")
+        ax.add_collection3d(poly)
+
+        outer_square = np.array([
+            [-gate_size_outer, 0, -gate_size_outer],
+            [ gate_size_outer, 0, -gate_size_outer],
+            [ gate_size_outer, 0,  gate_size_outer],
+            [-gate_size_outer, 0,  gate_size_outer],
+        ])
+        outer_transformed = rotate_and_translate(outer_square, R, gate)
+        poly_outer = Poly3DCollection([outer_transformed], color=gate_color)
+        ax.add_collection3d(poly_outer)
+
+    # Gate-Zentren markieren
+    ax.scatter(gates_positions[:,0], gates_positions[:,1], gates_positions[:,2], c='r', s=50, label=None)
+
+    # Stäbe plotten (von z=0 bis z=1)
+    for idx, point in enumerate(obstacle_positions):
+        ax.plot([point[0], point[0]], [point[1], point[1]], [0, 1],
+                linewidth=4, label='Staves' if idx == 0 else "")
+
+    # Achsenbeschriftung und Limits
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_xlim(-1.5, 1.5)
+    ax.set_ylim(-2, 2)
+    ax.set_zlim(0, 2)
+
+    ax.legend()
+    ax.set_title('3D Waypoints mit Stäben und rotierbaren Gates')
+    plt.show()
+
 
 
 def distribute_timesteps_by_distance(gates: np.ndarray, N_total: int) -> list:
@@ -125,9 +204,6 @@ def apply_tendency_to_N_list(N_list: np.ndarray, max_shift: float=0.2 , shorten:
     return N_int
 
 
-
-
-
 def optimize_full_trajectory_random(
         gates: np.ndarray, gates_quat: np.ndarray, obstacles: np.ndarray, v_start: np.ndarray, v_end: np.ndarray, 
         t_min: float, t_max: float, step: int=1, random_iteraitions: int=5, dt: float=1/50
@@ -180,8 +256,6 @@ def optimize_full_trajectory_random(
                 continue
 
     return best_X_opt, best_N
-
-
 
 
 def optimize_from_given_N_list_random(

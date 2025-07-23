@@ -1,9 +1,16 @@
+"""Helpers for trajectory optimization in drone racing environments.
+
+Exports a quadrotor model and provides functions to optimize trajectories.
+"""
+
 import numpy as np
-from casadi import MX, Function, DM, vertcat, cos, sin, exp, inf, sumsqr, nlpsol, dot, norm_2, fmax, fabs, fmin
+from acados_template import AcadosModel
+from casadi import DM, MX, Function, cos, dot, exp, fabs, fmin, nlpsol, sin, sumsqr, vertcat
 from scipy.spatial.transform import Rotation as R
 
 
-def export_quadrotor_ode_model():
+def export_quadrotor_ode_model() -> AcadosModel:
+    """Symbolic Quadrotor Model."""
     # Define Drone Model
 
     # Define Gravitational Acceleration
@@ -86,8 +93,18 @@ def export_quadrotor_ode_model():
     return f_func, states.size1(), inputs.size1()
 
 
-def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1/50):
-
+def optimize_original(gates: np.ndarray, gates_quat: np.ndarray, N_list: np.ndarray, obstacles: np.ndarray, v_start: np.ndarray, v_end: np.ndarray, dt: float=1/50) -> tuple:
+    """Creates an acados Optimal Control Problem and Solver.
+     
+    Args:
+        gates: Liste der Gate-Positionen, jedes [x, y, z].
+        gates_quat: Liste der Gate-Orientierungen als Quaternionen.
+        N_list: Liste der Anzahl der Schritte pro Segment zwischen den Gates.
+        obstacles: Liste der Hindernis-Positionen, jedes [x, y, z].
+        v_start: Startgeschwindigkeit des Drohnenfluges.
+        v_end: Endgeschwindigkeit des Drohnenfluges.
+        dt: time step in seconds.
+    """
     # drone model
     f_func, nx, nu = export_quadrotor_ode_model()
 
@@ -138,7 +155,6 @@ def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1
     gate_idx = 1
     for seg_idx, N_seg in enumerate(N_list):
         gate_from = gates[seg_idx]
-        # gate_to = gates[seg_idx + 1]
 
         for j in range(N_seg):
             xi = X[idx]
@@ -148,8 +164,6 @@ def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1
             w += [xi, ui]
             if gate_idx == 2:
                 w0 += list(np.concatenate([np.array([0, -1.5, 1]).flatten(), np.zeros(nx - 3)])) + [0]*nu
-            elif gate_idx == 4:
-                w0 += list(np.concatenate([np.array([0, 1.1, 1.4]).flatten(), np.zeros(nx - 3)])) + [0]*nu
             else:
                 w0 += list(np.concatenate([np.array(gate_from).flatten(), np.zeros(nx - 3)])) + [0]*nu
 
@@ -211,7 +225,7 @@ def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1
 
             idx += 1
         
-        # Zwischen-Gates: Position (fixieren) - als UGB, Velocity frei
+        # Zwischen-Gates: Position als UGB - nicht fix + Velocity-Richtung nicht fix - reward für schenllen geraden Durchflug
         if  0 < gate_idx < len(gates) - 1:
             # Gate Durchflug-Punkt als UGB setzen - nicht als Fixpunkt
             gate_pos = np.array(gates[gate_idx])
@@ -222,14 +236,14 @@ def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1
             lbg += [-0.15, -0.15, 0.0]
             ubg += [ 0.15,  0.15, 0.0]
 
-            # cost korresponierend zu den UBGs des Gate-Durchflugs
+            # cost korresponierend zu den UBGs des Gate-Durchflugs - costs bei Abweichung vom der idealen Durchflugposition
             cost += 10.0 * sumsqr(rel_pos[0:3])
 
 
             # Velocity rewarden 
             v_drone = X[idx][3:6]
             gate_dir = DM(R.from_quat(gates_quat[gate_idx]).apply([0, 1, 0]))
-            cost -= 3 * dot(v_drone, gate_dir)
+            cost -= 0.5 * dot(v_drone, gate_dir)
             
 
             
@@ -245,7 +259,7 @@ def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1
     ubg += [0]*6
 
 
-    # Ziel-Gate: Position (fix) als UGB + Velocity-Richtung nicht fix
+    # Ziel-Gate: Position als UGB - nicht fix + Velocity-Richtung nicht fix - reward für schenllen geraden Durchflug
     gate_pos = np.array(gates[-1])
     gate_quat = gates_quat[-1]
     R_gate = R.from_quat(gate_quat).as_matrix()
@@ -315,8 +329,18 @@ def optimize_original(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1
 
 
 
-def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_end, dt=1/50):
-
+def optimize_velocity_bounded(gates: np.ndarray, gates_quat: np.ndarray, N_list: np.ndarray, obstacles: np.ndarray, v_start: np.ndarray, v_end: np.ndarray, dt: float=1/50) -> tuple:
+    """Creates an acados Optimal Control Problem and Solver with the allowed velocity bounded.
+     
+    Args:
+        gates: Liste der Gate-Positionen, jedes [x, y, z].
+        gates_quat: Liste der Gate-Orientierungen als Quaternionen.
+        N_list: Liste der Anzahl der Schritte pro Segment zwischen den Gates.
+        obstacles: Liste der Hindernis-Positionen, jedes [x, y, z].
+        v_start: Startgeschwindigkeit des Drohnenfluges.
+        v_end: Endgeschwindigkeit des Drohnenfluges.
+        dt: time step in seconds.
+    """
     # drone model
     f_func, nx, nu = export_quadrotor_ode_model()
 
@@ -392,19 +416,15 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
 
 
 
-            if gate_idx == 4 and j >= 20:
-                gate_pos = np.array(gates[3])
-                gate_quat = np.asarray(gates_quat[3], dtype=float)
-                gate_rot = R.from_quat(gate_quat).as_matrix()
-                rel_pos = gate_rot.T @ (xi[0:3] - gate_pos)
 
-                # Mindestens 20 cm über Gate‑Mitte:
-                g   += [rel_pos[2]]
-                lbg += [0.20]               # untere Schranke
-                ubg += [inf]                # keine obere Schranke
+            # Geschwindigkeit begrenzen
+            v_sq = sumsqr(xi[3:6])
+            g   += [v_sq]
+            lbg += [0]
+            v_max = 5.0
+            ubg += [v_max**2]
 
-                # Seitlichen Versatz zusätzlich bestrafen:
-                cost += 10.0 * rel_pos[0]**2
+
 
 
             # --------------------------------Cost------------------------------------
@@ -415,8 +435,6 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
             if obstacles: 
                 for idx_obs, obs in enumerate(obstacles):
                     dist = sumsqr(xi[0:2] - obs[0:2])
-                    # cost += 5 * exp(-100 * dist)
-                    # cost += 1 * exp(-((dist / 0.25)**8) * 900)
                     cost += 1 * exp(-((dist / 0.2)**4) * 500)
 
 
@@ -427,27 +445,22 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
                 if 0 < gate_ref_idx < len(gates): # ignoriere Startposition - 1. Gate ist Startposition
                     gate_pos = np.array(gates[gate_ref_idx])
                     gate_quat = np.asarray(gates_quat[gate_ref_idx], dtype=float)
-                    # gate_rot = R.from_quat(gate_quat)
                     gate_rot = R.from_quat(gate_quat).as_matrix()
 
-                    target_dist = 0.225 + 0.05/2    # Mitte von Rahmen: Innenkante=0.225m und Rahmendicke=0.05m
+                    target_dist = 0.225 + 0.1/2    # Mitte von Rahmen: Innenkante=0.225m und Rahmendicke=0.05m
                     falloff = 0.5                  # Wirkradius nach innen und außen
                     faktor = 500                  # Faktor für die Exponentialstrafe
                     y_range = 0.05                  # Toleranzbereich in y-Richtung
 
                     # Transform drone position into gate frame
-                    # rel_pos = gate_rot.apply(np.array(xi[:3]) - gate_pos, inverse=True)
                     rel_pos = gate_rot.T @ (xi[0:3] - gate_pos)
 
                     # minimal Distance to centre of gate frame ( in x or z direction )
-                    # penalty_dist = max(abs(abs(rel_pos[0]) - target_dist), abs(abs(rel_pos[2]) - target_dist))
                     penalty_dist = fmin(fabs(fabs(rel_pos[0]) - target_dist), fabs(fabs(rel_pos[2]) - target_dist))
 
                     # if abs(rel_pos[2]) < y_range: # Wenn innerhalb des Toleranzbereichs in y-Richtung
-                    #     cost += exp(-((penalty_dist / falloff) ** 4) * 200)
                     if_condition = fabs(rel_pos[1]) < y_range
                     cost += if_condition * (1.0 * exp(-((penalty_dist / falloff)**6) * faktor))
-                    # cost += if_condition * (2.0 * exp(-((penalty_dist / 0.5)**4) * 100))
 
 
 
@@ -472,40 +485,21 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
             ubg += [ 0.15,  0.15, 0.0]
 
 
-            # Velocity ignorieren ? 
+            # Velocity in gate normale rewarden
             v_drone = X[idx][3:6]
             gate_dir = DM(R.from_quat(gates_quat[gate_idx]).apply([0, 1, 0]))
-            '''
-            g += [dot(v_drone, gate_dir)]
-            lbg += [0.5]
-            ubg += [inf]
-            '''
             cost -= 3 * dot(v_drone, gate_dir)
-            # '''
+
+
 
 
             # ----------------------------------Cost--------------------------------------
-            '''
-            # Flugrichtung (/Geschwindigkeit) am Gate-Durchflug
-            gate_dir = DM(R.from_quat(gates_quat[gate_idx]).apply([0, 1, 0]))
-            # print(f"Gate Direction ({gate_idx}): {gate_dir}")
-            v_drone = X[idx][3:6]
-            v_norm = fmax(norm_2(v_drone), 1e-3)
-            cost_ = v_drone / (1e-6 + norm_2(v_drone)) - gate_dir # absolute Vektor-Diff.
-            cost += 5.0 * sumsqr(cost_)
-            safe_cos = dot(v_drone, gate_dir) / v_norm # Diff mit cos()
-            # print(f"Gate Direction cos-Cost: {safe_cos}")
-            cost += 5.0 * (1.0 - safe_cos)**2
-            cost -= 3 * dot(v_drone, gate_dir)
-            v_norm = v_drone / norm_2((v_drone + 1e-3))
-            cost += 10 * norm_2(v_norm - gate_dir)
-            '''
-
             # cost korresponierend zu den UBGs des Gate-Durchflugs
             cost += 10.0 * sumsqr(rel_pos[0:3])
 
 
         gate_idx += 1
+
 
 
 
@@ -515,8 +509,7 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
     ubg += [0]*6
 
 
-    # Ziel-Gate: Position (fix) als UGB + Velocity-Richtung nicht fix
-
+    # Ziel-Gate: Position fix + Velocity-Richtung nicht fix
     g += [X[total_N][0:3] - DM(gates[-1][:3])]
     lbg += [0]*3
     ubg += [0]*3
@@ -530,16 +523,13 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
     ubg += [ 0.15,  0.15, 0.0]
     '''
 
-    # Velocity ignorieren ? 
+
+
+    # Velocity in gate normale rewarden
     v_drone = X[total_N][3:6]
     gate_dir = DM(R.from_quat(gates_quat[-1]).apply([0, 1, 0]))
-    # '''
-    g += [dot(v_drone, gate_dir)]
-    lbg += [2.0]
-    ubg += [inf]
-    # '''
     cost -= 0.5 * dot(v_drone, gate_dir)
-    # '''
+
 
 
     # Letztes X anhängen
@@ -547,6 +537,7 @@ def optimize_velocity_bounded(gates, gates_quat, N_list, obstacles, v_start, v_e
     w0 += list(np.concatenate([np.array(gates[-1]).flatten(), np.zeros(nx - 3)]))
     lbw += position_lower_bound + velocity_lower_bound + roll_lower_bound + collective_force_lower_bound + command_lower_bound
     ubw += position_upper_bound + velocity_upper_bound + roll_upper_bound + collective_force_upper_bound + command_upper_bound
+
 
 
 
