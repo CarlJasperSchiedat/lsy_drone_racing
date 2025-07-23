@@ -1,6 +1,6 @@
 """Helpers for trajectory optimization in drone racing environments."""
 import numpy as np
-from optimizer import optimize_velocity_bounded
+from optimizer_old import optimize_velocity_bounded
 
 #from optimizer import optimize_original
 

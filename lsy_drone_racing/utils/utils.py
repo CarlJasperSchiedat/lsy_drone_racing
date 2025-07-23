@@ -174,7 +174,8 @@ def draw_tunnel(
         dummy = np.array([1.0, 0.0, 0.0])
         if abs(np.dot(dummy, n)) > 0.9:
             dummy = np.array([0.0, 1.0, 0.0])
-        u = np.cross(n, dummy);  u /= np.linalg.norm(u)
+        u = np.cross(n, dummy)
+        u /= np.linalg.norm(u)
         v = np.cross(n, u)
 
         # Kreis­punkte und Segmente
@@ -182,48 +183,3 @@ def draw_tunnel(
         pts = c + (r * np.cos(angles))[:, None] * u + (r * np.sin(angles))[:, None] * v
 
         draw_line(env=env,points=pts,rgba=rgba, min_size=line_width,max_size=line_width)
-
-
-
-
-def generate_nonuniform_ts(freq: int=50, des_completion_time: float=7) -> NDArray:
-    """Generate non-uniform time steps for the MPC."""
-    # Total number of points remains the same
-    total_points = int(freq * des_completion_time)
-    
-    # Define the time ranges where we want different densities
-    slow_ranges = [(0.23, 0.26), (0.7, 0.72)]
-    
-    # Calculate the proportion of time for each range
-    #total_slow_time = sum(end - start for start, end in slow_ranges)
-    #remaining_time = 1.0 - total_slow_time
-    
-    # Allocate points proportionally (more points in slow ranges)
-    # Let's say we want 3x density in slow ranges
-    density_factor = 3
-    
-    # Calculate point allocation
-    #slow_points = int(total_points * (density_factor * total_slow_time) / (remaining_time + density_factor * total_slow_time))
-    #remaining_points = total_points - slow_points
-    
-    # Generate base linspace
-    base_ts = np.linspace(0, 1, total_points)
-    
-    # Create a weighting function that increases weight in slow ranges
-    weights = np.ones_like(base_ts)
-    for start, end in slow_ranges:
-        mask = (base_ts >= start) & (base_ts < end)
-        weights[mask] = density_factor
-    
-    # Normalize weights to create a probability density function
-    weights /= weights.sum()
-    
-    # Generate non-uniform samples using inverse transform sampling
-    cum_weights = np.cumsum(weights)
-    cum_weights /= cum_weights[-1]  # normalize to 1
-    
-    # Create uniform samples and map through inverse CDF
-    uniform_samples = np.linspace(0, 1, total_points)
-    nonuniform_ts = np.interp(uniform_samples, cum_weights, base_ts)
-    
-    return nonuniform_ts

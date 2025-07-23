@@ -237,15 +237,13 @@ waypoints = np.array([                           # erster Versuch für die robus
     [0.0, 1.2, 1.1],     # Original Punkt 7
     [-0.15, 0.6, 1.1],   # Neu
     [-0.5, 0.0, 1.1],    # Original Punkt 8 (gate 3)
-    [-0.9, -0.5, 1.1],   # Original Punkt 9
-    [-1.7, -1.0, 1.1],   # Original Punkt 10
 ])
 
 obstacles_positions = [
     [1.0, 0.0, 1.4],
     [0.5, -1.0, 1.4],
     [0., 1.5, 1.4],
-    [-0.5, 0.5, 1.4],
+    [-0.5, 0.75, 1.4],
 ]
 
 gates_positions = [
@@ -290,7 +288,7 @@ extended_gates_quat = [[0, 0, 0, 0]] + gates_quat # der erste Eintrag wird nicht
 # N_opt = [35, 55, 45, 40] # 4 sec - optimized
 # X_opt, cost = optimize_velocity_bounded(extended_gates, extended_gates_quat, N_opt, obstacles_positions, start_vel, velocity_gate4, dt=1/50)
 
-N_opt = [63, 90, 71, 80]
+N_opt = [63, 95, 71, 85]
 #N_opt = [100, 150, 140, 110]
 X_opt, N_opt, cost = optimize_from_given_N_list_random(extended_gates, extended_gates_quat, obstacles_positions, start_vel, velocity_gate4, N_opt, iterations=1, max_shift=0.1, shorten=[], lengthen=[])
 
@@ -308,7 +306,7 @@ X_opt, N_opt, cost = optimize_from_given_N_list_random(extended_gates, extended_
 print("N_opt:", N_opt)
 print("optimale Zeiten:", np.array(N_opt) * (1/50) )
 print("optimale Gesamtzeit:", sum(N_opt) * (1/50))
-print("optimale Kosten: ", cost)
+# print("optimale Kosten: ", cost)
 
 
 plot_waypoints_and_environment_extra(X_opt, waypoints, obstacles_positions, gates_positions, gates_quat)

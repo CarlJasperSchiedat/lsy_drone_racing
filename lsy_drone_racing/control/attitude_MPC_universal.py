@@ -21,10 +21,6 @@ from scipy.spatial.transform import Rotation as R
 from lsy_drone_racing.control import Controller
 from lsy_drone_racing.control.attitude_MPC_universal_functions import create_ocp_solver
 
-# from lsy_drone_racing.utils.utils import generate_nonuniform_ts
-
-
-
 # FINE TUNING PARAMETERS
 # # Setting Tunnel-Constraints ? - And there respective parameters
 SET_TUNNEL               = False
@@ -38,7 +34,7 @@ MPC_HORIZON_STEPS = 20
 MPC_HORIZON_TIME  = 1
 
 # # Nominal Trajectory Parameters
-WAYPOINTS = np.array([                           # erster Versuch für die robuste Trajektorie - 14.07
+WAYPOINTS = np.array([
     [1.0, 1.5, 0.05],    # Original Punkt 0
     [0.95, 1.0, 0.2],    # Original Punkt 1
     [0.8, 0.3, 0.35],    # Neu
@@ -81,6 +77,9 @@ Q_ALL = np.array([Q_CONTROL, Q_ANGLE, Q_OBSTACLE, Q_POSITION, Q_POSITION_END], d
 
 # # any debug prints ? Self-written and MPC-debug messages spressed if "False"
 PRINT_AUSGABE = False
+
+
+
 
 
 
@@ -137,7 +136,6 @@ class MPController(Controller):
         self.dt = self.T_HORIZON / self.N
 
         ts = np.linspace(0, 1, int(self.freq * self.des_completion_time))
-        #ts = generate_nonuniform_ts(self.freq, self.des_completion_time)
 
         ticks_per_segment = int(self.freq * self.des_completion_time) / (len(self.waypoints) - 1)
         self.ticks = np.round(np.arange(0, len(self.waypoints)) * ticks_per_segment).astype(int)
@@ -162,7 +160,8 @@ class MPController(Controller):
         self.tunnel_trans = TUNNEL_TRANSITION_LENGTH
 
         windows_workaround = config.controller.get("windows_workaround", True)
-        self.acados_ocp_solver, self.ocp = create_ocp_solver(self.T_HORIZON, self.N, Q_ALL, self.set_tunnel, windows_workaround)
+        Q_all_local = config.controller.get("Q_ALL", Q_ALL)
+        self.acados_ocp_solver, self.ocp = create_ocp_solver(self.T_HORIZON, self.N, Q_all_local, self.set_tunnel, windows_workaround)
 
         self.last_f_collective = 0.3
         self.last_rpy_cmd = np.zeros(3)

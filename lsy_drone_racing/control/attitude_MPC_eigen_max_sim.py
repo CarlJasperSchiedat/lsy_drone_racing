@@ -408,7 +408,7 @@ class MPController(Controller):
         self.mass_estimator(obs)
 
         # Check if "Update Gates" is nessessary
-        updated_gate = self.check_for_update_2(obs)
+        updated_gate = self.check_for_update(obs)
         if updated_gate:
             self.update_traj(obs,updated_gate)
             
@@ -520,7 +520,7 @@ class MPController(Controller):
         """Reset the integral error."""
         self._tick = 0
     
-    def check_for_update_2(self, obs: dict[str, NDArray[np.floating]]) -> int | None:
+    def check_for_update(self, obs: dict[str, NDArray[np.floating]]) -> int | None:
         """Check if any gate's position has changed significantly.
 
         Args:

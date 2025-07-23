@@ -16,6 +16,19 @@ from tqdm.auto import tqdm
 from lsy_drone_racing.utils import load_config
 
 # Define the simulation parameters
+T_list = 8                              # desired completion time - actual completion time will be up to a second faster
+
+how_many = 10                           # How many runs do you want to simulate per timestep ?
+
+gui_enabled = True                      # Should the GUI be enabled ?
+
+cfg_path = Path("config/level2.toml")   # Which enviroment configuration should be run ?
+
+
+
+# Define the simulation parameters
+tunnel = [False]
+
 Q_CONTROL       =  0.05
 Q_ANGLE         =  0.05
 Q_OBSTACLE      = 50.0
@@ -23,25 +36,12 @@ Q_POSITION      = 10.0
 Q_POSITION_END  = 10.0
 Q_ALL = np.array([Q_CONTROL, Q_ANGLE, Q_OBSTACLE, Q_POSITION, Q_POSITION_END], dtype=float)
 
-T_list = np.arange(6.0, 9.0 + 0.5, 1.0)  # entweder np.arange() oder einfach nur float
-# print(T_list)
-# T_list = 8
-
-tunnel = [False]#, False]  # [True, False] oder einfach nur [True]
-how_many = 2
-
 Q_50 = Q_ALL.copy()
-Q_25 = np.where(Q_ALL == Q_OBSTACLE, 25, Q_ALL)
+Q_500 = np.where(Q_ALL == Q_OBSTACLE, 500, Q_ALL)
 Q_10 = np.where(Q_ALL == Q_OBSTACLE, 10, Q_ALL)
-mpc_settings = [(30, 1.0, Q_50)]#, (45, 1.5, Q_50)]  #[(mpc_horizon_steps, mpc_horizon_time), (...,....)]
+Q_00 = np.where(Q_ALL == Q_OBSTACLE, 0, Q_ALL)
 
-
-gui_enabled = True
-
-
-cfg_path = Path("config/level2.toml")
-
-
+mpc_settings = [(30, 1.0, Q_50)]    #[(mpc_horizon_steps, mpc_horizon_time, Q_all), (...,....)]
 
 
 def run_multiple_simulations():
@@ -49,18 +49,21 @@ def run_multiple_simulations():
     # Check if T_list is iterable
     T_iter = [float(T_list)] if not isinstance(T_list, Iterable) else T_list
 
-    # container that is dynamically adapted to 'tunnel'
+    # saves data
     stats = defaultdict(lambda: {"T": [], "avg": [], "std": [], "succ": []})
     
+    # number of total runs for progress-bar
     total_runs = len(tunnel) * len(mpc_settings) * len(T_iter)
 
 
     with tqdm(total=total_runs, desc="Simulations", unit="run") as pbar:
         for set_tunnel in tunnel:
             for N, Tf, Q_all in mpc_settings:
-
+                
+                # Workaround for my Windows Computer who doesnt like acados at all
                 clean_acados_folder(N, Tf, Q_all, set_tunnel)
 
+                # O_obstacle - is tested in the most part so it is written into the plot
                 q_obst = float(Q_all[2])
 
                 for T in T_iter:
@@ -104,9 +107,7 @@ def run_multiple_simulations():
                     
                     pbar.update(1)
 
-
-    # print("\n\nFertig - vor 'filling missing times'\n\n", stats)
-
+    # if some timesteps have no completion -> fill these with interpolated values
     stats = fill_missing_avgs(stats)
 
     print("\n\nFertig\n\n", stats)
@@ -151,7 +152,7 @@ def clean_acados_folder(
         simulate(config=cfg, n_runs=1, gui=False)
     except(FileNotFoundError, OSError):
         print("")
-        #print("Dummy Aufruf fehlgeschlagen")
+
 
 
 def fill_missing_avgs(stats: dict) -> dict:
