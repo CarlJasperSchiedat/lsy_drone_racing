@@ -1,8 +1,12 @@
+"""This module runs multiple simulations of the drone racing environment."""
 import random
 import time
+
 from sim import simulate
 
-def run_multiple_simulations():
+
+def run_multiple_simulations() -> int:
+    """Runs multiple simulations at given Level for different times."""
     # Run the simulation 10 times
     counter=0
     for run in range(1, 11):

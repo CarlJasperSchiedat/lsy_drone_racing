@@ -23,14 +23,14 @@ from lsy_drone_racing.control.attitude_MPC_universal_functions import create_ocp
 
 # FINE TUNING PARAMETERS
 # # Setting Tunnel-Constraints ? - And there respective parameters
-SET_TUNNEL               = False
+SET_TUNNEL               = True
 TUNNEL_WIDTH_GENERAL     = 0.4
 TUNNEL_WIDTH_AT_GATE     = 0.2
 TUNNEL_TRANSITION_LENGTH = 0.6
 
 # # MPC Parameters
 COMPLETION_TIME   = 7
-MPC_HORIZON_STEPS = 20
+MPC_HORIZON_STEPS = 30
 MPC_HORIZON_TIME  = 1
 
 # # Nominal Trajectory Parameters

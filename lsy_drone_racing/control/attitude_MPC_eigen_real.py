@@ -12,12 +12,11 @@ from __future__ import annotations  # Python 3.10 type hints
 from typing import TYPE_CHECKING
 
 import numpy as np
-import scipy
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from casadi import MX, cos, sin, vertcat
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
-from lsy_drone_racing.utils.utils import generate_nonuniform_ts
+
 from lsy_drone_racing.control import Controller
 
 if TYPE_CHECKING:
@@ -463,38 +462,17 @@ class MPController(Controller):
         """Reset the integral error."""
         self._tick = 0
 
-    def check_for_update(self,obs):
-        """
-        return: flag:
-        0 = keine update
-        1 = update obstale
-        2 = update gate
-        """
-        flag=0
-        if not np.array_equal(self.prev_obstacle,obs["obstacles_pos"]):
-            # print('Obstacle has changed:')  
-            # print(obs["obstacles_pos"])
-            self.prev_obstacle=obs["obstacles_pos"]
-            #self.prev_obstacle[1]=obs["obstacles_pos"][1]+[0,0.2,0.04]
-            flag=1
-        if not np.array_equal(self.prev_gates_quat,obs["gates_quat"]):
-            # print('Gate_rotation has changed:')
-            # print(obs['gates_quat'])
-            self.prev_gates_quat=obs["gates_quat"]
-            flag=2
-        if not np.array_equal(self.prev_gates,obs["gates_pos"]):
-            # print('Gate_position has changed:')
-            # print(obs['gates_pos'])
-            self.prev_gates=obs["gates_pos"]
-            flag=2
-
-        return flag
     
-    def check_for_update_2(self, obs):
+    def check_for_update_2(self, obs: dict[str, NDArray[np.floating]]) -> int | None:
         """Check if any gate's position has changed significantly.
+
+        Args:
+            obs: The current observation of the environment. See the environment's observation space
+                for details.
+
         Returns:
             - `None` if no gate moved beyond threshold
-            - The **index (int)** of the first changed gate (row-wise comparison)
+            - The **index (int)** of the first changed gate (row-wise comparison).
         """
         current_gates = np.asarray(obs["gates_pos"])  # Shape: (N_gates, 3)
         for gate_idx in range(len(self.prev_gates)):  # Compare each gate (row) individually
@@ -509,11 +487,17 @@ class MPController(Controller):
         
         return None
 
-    def update_traj(self, obs,updated_gate):
-        """
-        Set the cubic splines new from the current position
-        """
+    def update_traj(self, obs: dict[str, NDArray[np.floating]], updated_gate: int):
+        """Set the cubic splines new from the current position.
 
+        Args:
+            obs: The current observation of the environment. See the environment's observation space
+                for details.
+            updated_gate: The (index+1) of the gate that has moved beyond the threshold.
+
+        Returns:
+            None
+        """
         if self._tick == 0:
             print("Kein Update, Tick == 0")
             return
@@ -580,13 +564,20 @@ class MPController(Controller):
         print(f"✅ Neue Teiltrajektorie (Spline) um Gate {gate_idx} aktualisiert.")
         
 
-    def mass_estimator(self, obs):
+    def mass_estimator(self, obs: dict[str, NDArray[np.floating]]) -> None:
+        """Updates the Acceleration Parameter in the MPC-Solver corresponding to the drone mass.
 
+        Args:
+            obs: The current observation of the environment. See the environment's observation space
+                for details.
+
+        Returns:
+            None
+        """
         max_angle = max_angle=np.deg2rad(20)
 
 
         params_acc = [20.907574256269616, 3.653687545690674] # params_acc[0] ≈ k_thrust / m_nominal
-        nominal_m = 0.027
         GRAVITY = 9.806
 
 

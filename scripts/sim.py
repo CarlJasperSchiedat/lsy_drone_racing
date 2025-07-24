@@ -12,18 +12,14 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
-import mujoco
+
 import fire
 import gymnasium
-from gymnasium.wrappers.jax_to_numpy import JaxToNumpy
+import mujoco
 import numpy as np
+from gymnasium.wrappers.jax_to_numpy import JaxToNumpy
 
-rgba_1 = np.array([1.0, 0, 0, 1.0])  # Red, fully opaque
-rgba_2=np.array([0,0,1,1])
-rgba_3=np.array([0,1,0,1])
-rgba_4=np.array([1,1,0,1])
-
-from lsy_drone_racing.utils import load_config, load_controller,draw_line, draw_tunnel
+from lsy_drone_racing.utils import draw_line, draw_tunnel, load_config, load_controller
 
 if TYPE_CHECKING:
     from ml_collections import ConfigDict
@@ -31,6 +27,10 @@ if TYPE_CHECKING:
     from lsy_drone_racing.control.controller import Controller
     from lsy_drone_racing.envs.drone_race import DroneRaceEnv
 
+rgba_1 = np.array([1.0, 0, 0, 1.0])  # Red, fully opaque
+rgba_2=np.array([0,0,1,1])
+rgba_3=np.array([0,1,0,1])
+rgba_4=np.array([1,1,0,1])
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +54,11 @@ def simulate(
     Returns:
         A list of episode times.
     """
-    # Load configuration and check if firmare should be used.
-    config = load_config(Path(__file__).parents[1] / "config" / config)
+    # Check if ConfigDict is given or a Path is given
+    if isinstance(config, (str, Path)):
+        # Load configuration and check if firmare should be used.
+        config = load_config(Path(__file__).parents[1] / "config" / config)
+
     if gui is None:
         gui = config.sim.gui
     else:
@@ -90,12 +93,7 @@ def simulate(
 
             action = controller.compute_control(obs, info)
             y_ref = np.array([y[8:11] for y in controller.y])
-            z_values = [0.2,0.4,0.6,0.8]
-            r = np.array([0.15]*4)
-            obs1_points = [np.array([controller.y[0][0], controller.y[0][1], z]) for z in z_values]
-            obs2_points = [np.array([controller.y[0][2], controller.y[0][3], z]) for z in z_values]
-            obs3_points = [np.array([controller.y[0][4], controller.y[0][5], z]) for z in z_values]
-            obs4_points = [np.array([controller.y[0][6], controller.y[0][7], z]) for z in z_values]
+            radii   = np.array([y[-1]   for y in controller.y])
             y_mpc=np.array([y[:3] for y in controller.y_mpc])
             #radii   = np.array([y[-1]   for y in controller.y])
             obs, reward, terminated, truncated, info = env.step(action)
@@ -109,15 +107,18 @@ def simulate(
             # Synchronize the GUI.
             if config.sim.gui:
                 if ((i * fps) % config.env.freq) < fps:
-                    draw_line(env=env,points=controller.traj_vis.T,rgba=rgba_2)
-                    draw_line(env=env,points=y_mpc,rgba=rgba_1)
-                    #draw_line(env=env,points=y_ref,rgba=rgba_3)
-                    draw_line(env=env,points=controller.update_traj_vis.T,rgba=rgba_4)
-                    #draw_tunnel(env=env,centers=y_ref,radii=radii,rgba=rgba_1) # ref tunnel
-                    #draw_tunnel(env=env,centers=obs1_points,radii=r,rgba=rgba_1) # obs_1 tunnel
-                    #draw_tunnel(env=env,centers=obs2_points,radii=r,rgba=rgba_1) # obs_1 tunnel
-                    #draw_tunnel(env=env,centers=obs3_points,radii=r,rgba=rgba_1) # obs_1 tunnel
-                    #draw_tunnel(env=env,centers=obs4_points,radii=r,rgba=rgba_1) # obs_1 tunnel
+                    draw_line(env=env,points=controller.traj_vis.T,rgba=rgba_2) # nominal trajectory
+                    draw_line(env=env,points=controller.update_traj_vis.T,rgba=rgba_4) # updated trajectory segment
+                    draw_line(env=env,points=y_mpc,rgba=rgba_3) # optimized MPC trajectory
+                    
+                    
+                    try:
+                        draw_line(env=env,points=y_ref,rgba=rgba_1, min_size=6.0,max_size=6.0) # green MPC line -> reference trajectory
+                    except Exception as e:
+                        logger.error(f"Error drawing MPC line: {e} \nExpend the refence trajectory")
+
+                    if getattr(controller, "set_tunnel", False):  # only draw tunnel if it is set
+                        draw_tunnel(env=env,centers=y_ref,radii=radii,rgba=rgba_1) # MPC tunnel
                     env.render()
                 if i == 1:
                     viewer = env.unwrapped.sim.viewer.viewer
