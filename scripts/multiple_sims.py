@@ -16,7 +16,7 @@ from tqdm.auto import tqdm
 from lsy_drone_racing.utils import load_config
 
 # Define the simulation parameters
-T_list = 8                              # desired completion time - actual completion time will be up to a second faster - can be set if the controller is universal
+T_list = 6.5                            # desired completion time - actual completion time will be up to a second faster - can be set if the controller is universal
 
 how_many = 2                            # How many runs do you want to simulate per timestep ?
 
