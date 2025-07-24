@@ -1,1 +1,1 @@
-"""Plot- und Trajektorien-Werkzeuge für das Drone-Racing-Projekt."""
+"""Trajektorien-Optimierungs-Werkzeuge für das Drone-Racing-Projekt."""
